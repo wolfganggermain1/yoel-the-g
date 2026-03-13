@@ -119,6 +119,7 @@ export default function PluginWizardPage() {
         difficulty: difficulty!,
         features,
         title: title.trim(),
+        description: '',
         developerName: developerName.trim(),
       };
       setGeneratedPrompt(generateGamePrompt(config));
