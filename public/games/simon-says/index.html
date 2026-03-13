@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YOEL's ROBLOX Simon Says!</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Bungee&display=swap');
+
+* { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+
+body {
+  background: #1a1a2e;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  overflow: hidden;
+  font-family: 'Fredoka One', 'Segoe UI', sans-serif;
+}
+
+/* ===== ANIMATED BACKGROUND ===== */
+.bg-layer {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.bg-layer .grid {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image:
+    linear-gradient(rgba(0,162,255,0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,162,255,0.06) 1px, transparent 1px);
+  background-size: 50px 50px;
+  animation: gridMove 4s linear infinite;
+}
+
+@keyframes gridMove {
+  0% { transform: translate(0,0); }
+  100% { transform: translate(50px,50px); }
+}
+
+.floating-block {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  opacity: 0.15;
+  animation: floatBlock 15s linear infinite;
+}
+
+@keyframes floatBlock {
+  0% { transform: translateY(110vh) rotate(0deg); }
+  100% { transform: translateY(-20vh) rotate(360deg); }
+}
+
+/* ===== GAME CONTAINER ===== */
+#game-container {
+  position: relative;
+  z-index: 1;
+  width: 700px;
+  max-width: 95vw;
+  text-align: center;
+}
+
+/* ===== TITLE ===== */
+#title {
+  font-family: 'Bungee', cursive;
+  font-size: 42px;
+  color: #fff;
+  text-shadow: 0 4px 0 #111, 0 0 40px rgba(0,162,255,0.5);
+  margin-bottom: 5px;
+  letter-spacing: 2px;
+}
+
+#title .roblox-r {
+  color: #e2231a;
+  text-shadow: 0 4px 0 #8b0000, 0 0 30px rgba(226,35,26,0.6);
+}
+
+#subtitle {
+  font-size: 16px;
+  color: #aaa;
+  margin-bottom: 20px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+}
+
+/* ===== TOP BAR ===== */
+#top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding: 10px 20px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 15px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.stat-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  font-size: 18px;
+}
+
+.stat-box .icon {
+  font-size: 24px;
+}
+
+.stat-box .label {
+  color: #888;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.stat-box .value {
+  font-size: 22px;
+  font-weight: bold;
+}
+
+#robux-display .value { color: #00b06f; }
+#level-display .value { color: #00a2ff; }
+#highscore-display .value { color: #ffaa00; }
+
+/* ===== NOOB CHARACTER ===== */
+#noob-area {
+  margin: 15px auto;
+  position: relative;
+  width: 120px;
+  height: 150px;
+}
+
+.noob {
+  position: relative;
+  width: 120px;
+  height: 150px;
+}
+
+.noob-head {
+  width: 60px;
+  height: 60px;
+  background: #f5c542;
+  border-radius: 8px;
+  margin: 0 auto;
+  position: relative;
+  border: 3px solid #d4a832;
+  box-shadow: inset 0 -5px 0 rgba(0,0,0,0.1);
+}
+
+.noob-face {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.noob-eyes {
+  display: flex;
+  gap: 12px;
+}
+
+.noob-eye {
+  width: 10px;
+  height: 10px;
+  background: #1a1a1a;
+  border-radius: 50%;
+  position: relative;
+}
+
+.noob-eye::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 4px;
+  height: 4px;
+  background: #fff;
+  border-radius: 50%;
+}
+
+.noob-mouth {
+  width: 16px;
+  height: 8px;
+  border-bottom: 3px solid #1a1a1a;
+  border-radius: 0 0 8px 8px;
+}
+
+.noob-mouth.happy {
+  border-bottom: 3px solid #1a1a1a;
+  border-radius: 0 0 10px 10px;
+  width: 20px;
+  height: 10px;
+}
+
+.noob-mouth.oof {
+  width: 14px;
+  height: 14px;
+  border: 3px solid #1a1a1a;
+  border-radius: 50%;
+  background: #333;
+}
+
+.noob-body {
+  width: 50px;
+  height: 45px;
+  background: #00a2ff;
+  border-radius: 6px;
+  margin: 2px auto 0;
+  border: 3px solid #0080cc;
+  box-shadow: inset 0 -5px 0 rgba(0,0,0,0.1);
+  position: relative;
+}
+
+.noob-body::before {
+  content: 'R';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: 'Bungee', cursive;
+  font-size: 20px;
+  color: rgba(255,255,255,0.3);
+}
+
+.noob-arms {
+  display: flex;
+  justify-content: space-between;
+  width: 80px;
+  margin: -40px auto 0;
+  position: relative;
+  z-index: -1;
+}
+
+.noob-arm {
+  width: 15px;
+  height: 35px;
+  background: #f5c542;
+  border-radius: 5px;
+  border: 2px solid #d4a832;
+  transition: transform 0.3s ease;
+}
+
+.noob-arm.left { transform-origin: top right; }
+.noob-arm.right { transform-origin: top left; }
+
+.noob.celebrating .noob-arm.left { transform: rotate(-30deg); }
+.noob.celebrating .noob-arm.right { transform: rotate(30deg); }
+.noob.oof-pose .noob-arm { transform: rotate(10deg); }
+
+.noob-legs {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.noob-leg {
+  width: 18px;
+  height: 25px;
+  background: #3a5a2c;
+  border-radius: 5px;
+  border: 2px solid #2e4a22;
+}
+
+/* Speech bubble */
+#speech-bubble {
+  position: absolute;
+  top: -50px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fff;
+  color: #333;
+  padding: 8px 16px;
+  border-radius: 15px;
+  font-size: 14px;
+  font-family: 'Fredoka One', sans-serif;
+  white-space: nowrap;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+#speech-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 8px solid transparent;
+  border-top-color: #fff;
+  border-bottom: 0;
+}
+
+#speech-bubble.show { opacity: 1; }
+
+/* ===== SIMON BUTTONS ===== */
+#simon-board {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  max-width: 380px;
+  margin: 20px auto;
+  perspective: 800px;
+}
+
+.simon-btn {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 20px;
+  cursor: pointer;
+  position: relative;
+  transition: transform 0.15s, box-shadow 0.15s;
+  overflow: hidden;
+  border: 4px solid rgba(0,0,0,0.3);
+}
+
+.simon-btn::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: 10%;
+  width: 80%;
+  height: 30%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.35), transparent);
+  border-radius: 50%;
+}
+
+.simon-btn::after {
+  content: attr(data-icon);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 50px;
+  opacity: 0.5;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+}
+
+.simon-btn:active:not(.disabled), .simon-btn.active {
+  transform: scale(0.92) translateY(4px);
+}
+
+/* Red button - Sword */
+.simon-btn.red {
+  background: linear-gradient(145deg, #ff4444, #cc0000);
+  box-shadow: 0 8px 0 #8b0000, 0 12px 30px rgba(255,0,0,0.3);
+}
+.simon-btn.red.active, .simon-btn.red:active:not(.disabled) {
+  background: linear-gradient(145deg, #ff7777, #ff2222);
+  box-shadow: 0 2px 0 #8b0000, 0 4px 15px rgba(255,0,0,0.6);
+}
+.simon-btn.red::after { content: '⚔️'; }
+
+/* Green button - Robux */
+.simon-btn.green {
+  background: linear-gradient(145deg, #44cc44, #00aa00);
+  box-shadow: 0 8px 0 #006600, 0 12px 30px rgba(0,255,0,0.2);
+}
+.simon-btn.green.active, .simon-btn.green:active:not(.disabled) {
+  background: linear-gradient(145deg, #77ff77, #22ff22);
+  box-shadow: 0 2px 0 #006600, 0 4px 15px rgba(0,255,0,0.5);
+}
+.simon-btn.green::after { content: '💎'; }
+
+/* Blue button - Shield */
+.simon-btn.blue {
+  background: linear-gradient(145deg, #4488ff, #0044cc);
+  box-shadow: 0 8px 0 #002288, 0 12px 30px rgba(0,100,255,0.3);
+}
+.simon-btn.blue.active, .simon-btn.blue:active:not(.disabled) {
+  background: linear-gradient(145deg, #77aaff, #2266ff);
+  box-shadow: 0 2px 0 #002288, 0 4px 15px rgba(0,100,255,0.6);
+}
+.simon-btn.blue::after { content: '🛡️'; }
+
+/* Yellow button - Star */
+.simon-btn.yellow {
+  background: linear-gradient(145deg, #ffcc00, #cc9900);
+  box-shadow: 0 8px 0 #886600, 0 12px 30px rgba(255,200,0,0.3);
+}
+.simon-btn.yellow.active, .simon-btn.yellow:active:not(.disabled) {
+  background: linear-gradient(145deg, #ffee55, #ffdd22);
+  box-shadow: 0 2px 0 #886600, 0 4px 15px rgba(255,200,0,0.6);
+}
+.simon-btn.yellow::after { content: '⭐'; }
+
+.simon-btn.disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* ===== MESSAGE AREA ===== */
+#message {
+  font-size: 24px;
+  color: #fff;
+  margin: 15px 0;
+  min-height: 36px;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+}
+
+#message.watching { color: #ffaa00; }
+#message.your-turn { color: #00ff88; }
+#message.wrong { color: #ff4444; }
+#message.correct { color: #00b06f; }
+
+/* ===== BUTTONS ===== */
+.game-btn {
+  font-family: 'Bungee', cursive;
+  font-size: 22px;
+  padding: 15px 50px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  letter-spacing: 2px;
+  transition: all 0.2s;
+  position: relative;
+  color: #fff;
+}
+
+.game-btn:hover { transform: translateY(-3px); }
+.game-btn:active { transform: translateY(2px); }
+
+#start-btn {
+  background: linear-gradient(145deg, #00b06f, #008855);
+  box-shadow: 0 6px 0 #005533, 0 10px 30px rgba(0,176,111,0.4);
+}
+
+#start-btn:active {
+  box-shadow: 0 2px 0 #005533, 0 4px 15px rgba(0,176,111,0.4);
+}
+
+#restart-btn {
+  background: linear-gradient(145deg, #e2231a, #bb1111);
+  box-shadow: 0 6px 0 #880000, 0 10px 30px rgba(226,35,26,0.4);
+  display: none;
+}
+
+#restart-btn:active {
+  box-shadow: 0 2px 0 #880000, 0 4px 15px rgba(226,35,26,0.4);
+}
+
+.btn-row {
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+  margin-top: 10px;
+}
+
+/* ===== DIFFICULTY SELECT ===== */
+#difficulty-area {
+  margin: 10px 0 15px;
+}
+
+#difficulty-area label {
+  color: #aaa;
+  font-size: 14px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.diff-btns {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.diff-btn {
+  font-family: 'Fredoka One', sans-serif;
+  font-size: 14px;
+  padding: 8px 20px;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-radius: 25px;
+  cursor: pointer;
+  background: transparent;
+  color: #aaa;
+  transition: all 0.2s;
+  letter-spacing: 1px;
+}
+
+.diff-btn:hover { border-color: #00a2ff; color: #fff; }
+
+.diff-btn.active {
+  background: #00a2ff;
+  border-color: #00a2ff;
+  color: #fff;
+  box-shadow: 0 0 20px rgba(0,162,255,0.3);
+}
+
+/* ===== GAME OVER OVERLAY ===== */
+#game-over {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.85);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+  backdrop-filter: blur(8px);
+}
+
+#game-over.show { display: flex; }
+
+.game-over-box {
+  background: linear-gradient(145deg, #2a2a4a, #1a1a2e);
+  border: 2px solid rgba(255,255,255,0.1);
+  border-radius: 25px;
+  padding: 40px;
+  text-align: center;
+  max-width: 420px;
+  animation: popIn 0.4s ease;
+}
+
+@keyframes popIn {
+  0% { transform: scale(0.5); opacity: 0; }
+  70% { transform: scale(1.05); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.game-over-box h2 {
+  font-family: 'Bungee', cursive;
+  font-size: 36px;
+  color: #e2231a;
+  margin-bottom: 5px;
+  text-shadow: 0 3px 0 #8b0000;
+}
+
+.game-over-box .oof-text {
+  font-size: 60px;
+  margin: 10px 0;
+}
+
+.game-over-box .stats {
+  color: #ccc;
+  font-size: 18px;
+  margin: 15px 0;
+  line-height: 2;
+}
+
+.game-over-box .stats span {
+  color: #ffaa00;
+  font-weight: bold;
+}
+
+.new-record {
+  color: #00ff88 !important;
+  font-size: 20px !important;
+  animation: pulse 0.6s ease infinite alternate;
+}
+
+@keyframes pulse {
+  from { transform: scale(1); }
+  to { transform: scale(1.1); }
+}
+
+/* ===== LEVEL UP EFFECT ===== */
+#level-up-effect {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: 'Bungee', cursive;
+  font-size: 60px;
+  color: #ffaa00;
+  text-shadow: 0 4px 0 #885500, 0 0 50px rgba(255,170,0,0.6);
+  z-index: 50;
+  pointer-events: none;
+  opacity: 0;
+  transition: all 0.5s;
+}
+
+#level-up-effect.show {
+  opacity: 1;
+  animation: levelUpPop 1.2s ease forwards;
+}
+
+@keyframes levelUpPop {
+  0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+  30% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+  60% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -60%) scale(1); opacity: 0; }
+}
+
+/* ===== STREAK INDICATOR ===== */
+#streak-bar {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin: 10px 0 5px;
+  min-height: 20px;
+}
+
+.streak-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  border: 2px solid rgba(255,255,255,0.1);
+  transition: all 0.3s;
+}
+
+.streak-dot.filled {
+  background: #00b06f;
+  border-color: #00ff88;
+  box-shadow: 0 0 10px rgba(0,255,136,0.5);
+}
+
+.streak-dot.current {
+  animation: dotPulse 0.5s ease infinite alternate;
+}
+
+@keyframes dotPulse {
+  from { box-shadow: 0 0 5px rgba(0,162,255,0.3); }
+  to { box-shadow: 0 0 15px rgba(0,162,255,0.8); }
+}
+
+/* ===== ROBUX POPUP ===== */
+.robux-popup {
+  position: fixed;
+  font-family: 'Bungee', cursive;
+  font-size: 28px;
+  color: #00b06f;
+  text-shadow: 0 2px 0 #005533;
+  pointer-events: none;
+  z-index: 60;
+  animation: robuxFloat 1.5s ease forwards;
+}
+
+@keyframes robuxFloat {
+  0% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-80px) scale(1.3); }
+}
+
+/* ===== PARTICLE EFFECTS ===== */
+.particle {
+  position: fixed;
+  pointer-events: none;
+  z-index: 55;
+  border-radius: 4px;
+  animation: particleBurst 0.8s ease forwards;
+}
+
+@keyframes particleBurst {
+  0% { opacity: 1; transform: translate(0,0) scale(1); }
+  100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0); }
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 500px) {
+  #title { font-size: 28px; }
+  #simon-board { max-width: 280px; gap: 10px; }
+  .simon-btn::after { font-size: 35px; }
+  #message { font-size: 18px; }
+  .game-btn { font-size: 16px; padding: 12px 30px; }
+  .stat-box .value { font-size: 16px; }
+  .noob { transform: scale(0.75); }
+  #noob-area { height: 110px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Animated Background -->
+<div class="bg-layer">
+  <div class="grid"></div>
+</div>
+
+<!-- Level Up Effect -->
+<div id="level-up-effect"></div>
+
+<!-- Game Over Overlay -->
+<div id="game-over">
+  <div class="game-over-box">
+    <h2>GAME OVER</h2>
+    <div class="oof-text">💀</div>
+    <div class="stats" id="go-stats"></div>
+    <button class="game-btn" id="restart-btn-overlay" onclick="startGame()">PLAY AGAIN</button>
+  </div>
+</div>
+
+<!-- Main Game -->
+<div id="game-container">
+  <div id="title"><span class="roblox-r">R</span>OBLOX SIMON SAYS</div>
+  <div id="subtitle">Can you follow the Noob?</div>
+
+  <div id="top-bar">
+    <div class="stat-box" id="robux-display">
+      <div>
+        <div class="label">Robux</div>
+        <div class="value" id="robux">0</div>
+      </div>
+    </div>
+    <div class="stat-box" id="level-display">
+      <div>
+        <div class="label">Level</div>
+        <div class="value" id="level">1</div>
+      </div>
+    </div>
+    <div class="stat-box" id="highscore-display">
+      <div>
+        <div class="label">Best</div>
+        <div class="value" id="highscore">0</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Streak Bar -->
+  <div id="streak-bar"></div>
+
+  <!-- Noob Character -->
+  <div id="noob-area">
+    <div class="noob" id="noob">
+      <div class="noob-head">
+        <div class="noob-face">
+          <div class="noob-eyes">
+            <div class="noob-eye"></div>
+            <div class="noob-eye"></div>
+          </div>
+          <div class="noob-mouth" id="noob-mouth"></div>
+        </div>
+      </div>
+      <div class="noob-body"></div>
+      <div class="noob-arms">
+        <div class="noob-arm left"></div>
+        <div class="noob-arm right"></div>
+      </div>
+      <div class="noob-legs">
+        <div class="noob-leg"></div>
+        <div class="noob-leg"></div>
+      </div>
+    </div>
+    <div id="speech-bubble">Watch me!</div>
+  </div>
+
+  <!-- Simon Board -->
+  <div id="simon-board">
+    <div class="simon-btn red disabled" data-color="red" data-icon="⚔️"></div>
+    <div class="simon-btn green disabled" data-color="green" data-icon="💎"></div>
+    <div class="simon-btn blue disabled" data-color="blue" data-icon="🛡️"></div>
+    <div class="simon-btn yellow disabled" data-color="yellow" data-icon="⭐"></div>
+  </div>
+
+  <div id="message">Press START to play!</div>
+
+  <!-- Difficulty -->
+  <div id="difficulty-area">
+    <label>Select Difficulty</label>
+    <div class="diff-btns">
+      <button class="diff-btn" data-diff="easy" onclick="setDifficulty('easy')">EASY</button>
+      <button class="diff-btn active" data-diff="normal" onclick="setDifficulty('normal')">NORMAL</button>
+      <button class="diff-btn" data-diff="hard" onclick="setDifficulty('hard')">HARD</button>
+      <button class="diff-btn" data-diff="oof" onclick="setDifficulty('oof')">OOF!</button>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="game-btn" id="start-btn" onclick="startGame()">START</button>
+    <button class="game-btn" id="restart-btn" onclick="startGame()">RESTART</button>
+  </div>
+</div>
+
+<script>
+// ===== AUDIO ENGINE (Web Audio API) =====
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx;
+
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new AudioCtx();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function playTone(freq, duration = 0.25, type = 'square', vol = 0.12) {
+  ensureAudio();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+}
+
+const TONES = {
+  red:    { freq: 440, type: 'square' },
+  green:  { freq: 554, type: 'square' },
+  blue:   { freq: 659, type: 'square' },
+  yellow: { freq: 880, type: 'square' },
+};
+
+function playColor(color) {
+  const t = TONES[color];
+  playTone(t.freq, 0.3, t.type, 0.15);
+}
+
+function playSuccess() {
+  playTone(523, 0.12, 'sine', 0.1);
+  setTimeout(() => playTone(659, 0.12, 'sine', 0.1), 120);
+  setTimeout(() => playTone(784, 0.2, 'sine', 0.12), 240);
+}
+
+function playLevelUp() {
+  [523, 587, 659, 784, 880, 1047].forEach((f, i) => {
+    setTimeout(() => playTone(f, 0.15, 'sine', 0.1), i * 80);
+  });
+}
+
+function playOof() {
+  playTone(200, 0.5, 'sawtooth', 0.15);
+  setTimeout(() => playTone(120, 0.6, 'sawtooth', 0.12), 150);
+}
+
+function playRobux() {
+  playTone(1200, 0.08, 'sine', 0.06);
+  setTimeout(() => playTone(1600, 0.12, 'sine', 0.08), 60);
+}
+
+// ===== FLOATING BLOCKS BACKGROUND =====
+function createFloatingBlocks() {
+  const layer = document.querySelector('.bg-layer');
+  const colors = ['#e2231a', '#00a2ff', '#00b06f', '#ffaa00', '#cc44ff', '#ff6600'];
+  for (let i = 0; i < 20; i++) {
+    const block = document.createElement('div');
+    block.className = 'floating-block';
+    block.style.left = Math.random() * 100 + '%';
+    block.style.background = colors[Math.floor(Math.random() * colors.length)];
+    block.style.animationDelay = Math.random() * 15 + 's';
+    block.style.animationDuration = (12 + Math.random() * 10) + 's';
+    block.style.width = (20 + Math.random() * 30) + 'px';
+    block.style.height = block.style.width;
+    layer.appendChild(block);
+  }
+}
+createFloatingBlocks();
+
+// ===== GAME STATE =====
+const COLORS = ['red', 'green', 'blue', 'yellow'];
+let sequence = [];
+let playerIndex = 0;
+let level = 1;
+let robux = 0;
+let highScore = parseInt(localStorage.getItem('robloxSimonHigh') || '0');
+let isPlaying = false;
+let isShowingSequence = false;
+let difficulty = 'normal';
+
+const SPEED = { easy: 700, normal: 500, hard: 350, oof: 200 };
+const ROBUX_PER_CORRECT = { easy: 5, normal: 10, hard: 20, oof: 50 };
+const LEVEL_UP_EVERY = 5;
+
+const btns = document.querySelectorAll('.simon-btn');
+const messageEl = document.getElementById('message');
+const levelEl = document.getElementById('level');
+const robuxEl = document.getElementById('robux');
+const highEl = document.getElementById('highscore');
+const noob = document.getElementById('noob');
+const mouth = document.getElementById('noob-mouth');
+const speechBubble = document.getElementById('speech-bubble');
+const streakBar = document.getElementById('streak-bar');
+const startBtn = document.getElementById('start-btn');
+const restartBtn = document.getElementById('restart-btn');
+const gameOverEl = document.getElementById('game-over');
+const goStatsEl = document.getElementById('go-stats');
+const levelUpEl = document.getElementById('level-up-effect');
+
+highEl.textContent = highScore;
+
+// ===== DIFFICULTY =====
+function setDifficulty(d) {
+  difficulty = d;
+  document.querySelectorAll('.diff-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.diff === d);
+  });
+}
+
+// ===== PARTICLES =====
+function spawnParticles(x, y, color, count = 8) {
+  for (let i = 0; i < count; i++) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    p.style.left = x + 'px';
+    p.style.top = y + 'px';
+    p.style.width = (4 + Math.random() * 8) + 'px';
+    p.style.height = p.style.width;
+    p.style.background = color;
+    const angle = (Math.PI * 2 / count) * i + Math.random() * 0.5;
+    const dist = 40 + Math.random() * 60;
+    p.style.setProperty('--tx', Math.cos(angle) * dist + 'px');
+    p.style.setProperty('--ty', Math.sin(angle) * dist + 'px');
+    document.body.appendChild(p);
+    setTimeout(() => p.remove(), 800);
+  }
+}
+
+// ===== ROBUX POPUP =====
+function showRobuxPopup(amount) {
+  const popup = document.createElement('div');
+  popup.className = 'robux-popup';
+  popup.textContent = `+${amount} R$`;
+  popup.style.left = (window.innerWidth / 2 - 50 + (Math.random() - 0.5) * 60) + 'px';
+  popup.style.top = (window.innerHeight / 2 + 50) + 'px';
+  document.body.appendChild(popup);
+  setTimeout(() => popup.remove(), 1500);
+}
+
+// ===== NOOB EXPRESSIONS =====
+function noobSay(text) {
+  speechBubble.textContent = text;
+  speechBubble.classList.add('show');
+  clearTimeout(noobSay._t);
+  noobSay._t = setTimeout(() => speechBubble.classList.remove('show'), 2000);
+}
+
+function noobHappy() {
+  mouth.className = 'noob-mouth happy';
+  noob.classList.add('celebrating');
+  noob.classList.remove('oof-pose');
+}
+
+function noobNeutral() {
+  mouth.className = 'noob-mouth';
+  noob.classList.remove('celebrating', 'oof-pose');
+}
+
+function noobOof() {
+  mouth.className = 'noob-mouth oof';
+  noob.classList.add('oof-pose');
+  noob.classList.remove('celebrating');
+}
+
+// ===== STREAK BAR =====
+function updateStreakBar() {
+  streakBar.innerHTML = '';
+  const needed = Math.min(sequence.length, 20);
+  for (let i = 0; i < needed; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'streak-dot';
+    if (i < playerIndex) dot.classList.add('filled');
+    if (i === playerIndex && isPlaying && !isShowingSequence) dot.classList.add('current');
+    streakBar.appendChild(dot);
+  }
+}
+
+// ===== FLASH BUTTON =====
+function flashButton(color, duration = 300) {
+  return new Promise(resolve => {
+    const btn = document.querySelector(`.simon-btn.${color}`);
+    btn.classList.add('active');
+    playColor(color);
+    setTimeout(() => {
+      btn.classList.remove('active');
+      setTimeout(resolve, 100);
+    }, duration);
+  });
+}
+
+// ===== SHOW SEQUENCE =====
+async function showSequence() {
+  isShowingSequence = true;
+  setBtnsEnabled(false);
+  messageEl.textContent = 'Watch the Noob!';
+  messageEl.className = 'watching';
+  noobSay("Watch me! 👀");
+  noobNeutral();
+
+  await sleep(600);
+
+  const speed = SPEED[difficulty];
+  for (let i = 0; i < sequence.length; i++) {
+    await flashButton(sequence[i], speed * 0.6);
+    await sleep(speed * 0.3);
+  }
+
+  isShowingSequence = false;
+  setBtnsEnabled(true);
+  messageEl.textContent = 'Your turn!';
+  messageEl.className = 'your-turn';
+  noobSay("Your turn! 🎮");
+  updateStreakBar();
+}
+
+// ===== BUTTON CONTROLS =====
+function setBtnsEnabled(enabled) {
+  btns.forEach(b => {
+    if (enabled) b.classList.remove('disabled');
+    else b.classList.add('disabled');
+  });
+}
+
+// ===== LEVEL UP =====
+function showLevelUp(lvl) {
+  levelUpEl.textContent = `LEVEL ${lvl}!`;
+  levelUpEl.classList.add('show');
+  setTimeout(() => levelUpEl.classList.remove('show'), 1500);
+}
+
+// ===== HANDLE CLICK =====
+function handleClick(color) {
+  if (!isPlaying || isShowingSequence) return;
+  const btn = document.querySelector(`.simon-btn.${color}`);
+  if (btn.classList.contains('disabled')) return;
+
+  ensureAudio();
+
+  if (color === sequence[playerIndex]) {
+    // Correct!
+    playColor(color);
+    btn.classList.add('active');
+    setTimeout(() => btn.classList.remove('active'), 200);
+
+    const r = ROBUX_PER_CORRECT[difficulty];
+    robux += r;
+    robuxEl.textContent = robux;
+    showRobuxPopup(r);
+    playRobux();
+
+    const rect = btn.getBoundingClientRect();
+    const colorMap = { red: '#ff4444', green: '#44cc44', blue: '#4488ff', yellow: '#ffcc00' };
+    spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2, colorMap[color], 6);
+
+    playerIndex++;
+    updateStreakBar();
+
+    if (playerIndex === sequence.length) {
+      // Round complete!
+      setBtnsEnabled(false);
+      playSuccess();
+      noobHappy();
+
+      const newLevel = Math.floor(sequence.length / LEVEL_UP_EVERY) + 1;
+      if (newLevel > level) {
+        level = newLevel;
+        levelEl.textContent = level;
+        showLevelUp(level);
+        playLevelUp();
+        noobSay("LEVEL UP! 🔥");
+        robux += level * 25;
+        robuxEl.textContent = robux;
+        showRobuxPopup(level * 25);
+      } else {
+        const phrases = ["Nice! 🎉", "GG! 💪", "Pro gamer! 🏆", "Gg ez! 😎", "W! 🔥", "Goated! 🐐"];
+        noobSay(phrases[Math.floor(Math.random() * phrases.length)]);
+      }
+
+      if (sequence.length > highScore) {
+        highScore = sequence.length;
+        highEl.textContent = highScore;
+        localStorage.setItem('robloxSimonHigh', highScore.toString());
+      }
+
+      messageEl.textContent = `Round ${sequence.length} complete!`;
+      messageEl.className = 'correct';
+
+      setTimeout(nextRound, 1200);
+    }
+  } else {
+    // Wrong!
+    gameOver();
+  }
+}
+
+// ===== NEXT ROUND =====
+function nextRound() {
+  playerIndex = 0;
+  sequence.push(COLORS[Math.floor(Math.random() * 4)]);
+  updateStreakBar();
+  showSequence();
+}
+
+// ===== GAME OVER =====
+function gameOver() {
+  isPlaying = false;
+  setBtnsEnabled(false);
+  playOof();
+  noobOof();
+  noobSay("OOF! 💀");
+
+  messageEl.textContent = 'OOF! Game Over!';
+  messageEl.className = 'wrong';
+
+  // Flash all buttons red
+  btns.forEach(b => { b.classList.add('active'); });
+  setTimeout(() => btns.forEach(b => b.classList.remove('active')), 500);
+
+  if (sequence.length > highScore) {
+    highScore = sequence.length;
+    highEl.textContent = highScore;
+    localStorage.setItem('robloxSimonHigh', highScore.toString());
+  }
+
+  const isNewRecord = sequence.length >= highScore && sequence.length > 1;
+
+  goStatsEl.innerHTML = `
+    You reached round <span>${sequence.length}</span><br>
+    Level <span>${level}</span><br>
+    Earned <span>${robux} R$</span> Robux<br>
+    ${isNewRecord ? '<div class="new-record">NEW HIGH SCORE!</div>' : `Best: <span>${highScore}</span>`}
+  `;
+
+  setTimeout(() => {
+    gameOverEl.classList.add('show');
+    restartBtn.style.display = 'inline-block';
+    startBtn.style.display = 'none';
+  }, 800);
+}
+
+// ===== START GAME =====
+function startGame() {
+  ensureAudio();
+  gameOverEl.classList.remove('show');
+  sequence = [];
+  playerIndex = 0;
+  level = 1;
+  robux = 0;
+  isPlaying = true;
+  isShowingSequence = false;
+
+  levelEl.textContent = '1';
+  robuxEl.textContent = '0';
+  noobNeutral();
+
+  startBtn.style.display = 'none';
+  restartBtn.style.display = 'inline-block';
+
+  messageEl.textContent = 'Get ready...';
+  messageEl.className = '';
+
+  noobSay("Let's go! 🚀");
+
+  setTimeout(nextRound, 800);
+}
+
+// ===== BUTTON EVENTS =====
+btns.forEach(btn => {
+  const color = btn.dataset.color;
+  btn.addEventListener('click', () => handleClick(color));
+  btn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    handleClick(color);
+  });
+});
+
+// ===== KEYBOARD SUPPORT =====
+document.addEventListener('keydown', (e) => {
+  const map = { '1': 'red', 'q': 'red', '2': 'green', 'w': 'green', '3': 'blue', 'e': 'blue', '4': 'yellow', 'r': 'yellow' };
+  const color = map[e.key.toLowerCase()];
+  if (color) handleClick(color);
+  if (e.key === ' ' || e.key === 'Enter') {
+    if (!isPlaying) startGame();
+  }
+});
+
+// ===== UTILITY =====
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+</script>
+</body>
+</html>

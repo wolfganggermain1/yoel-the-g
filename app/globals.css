@@ -1,0 +1,255 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   Yoel The G - Theme System
+   4 themes: blue-light, blue-dark, red-light, red-dark
+   ============================================ */
+
+/* --- Blue Light Theme (Default) --- */
+[data-theme="blue-light"] {
+  --primary: #3b82f6;
+  --primary-dark: #1e40af;
+  --bg: #f0f7ff;
+  --surface: #ffffff;
+  --text: #1e293b;
+  --accent: #06b6d4;
+  --border: #bfdbfe;
+  --card-shadow: 0 4px 16px rgba(59, 130, 246, 0.12);
+  --glow: 0 0 20px rgba(59, 130, 246, 0.3);
+  --gradient-start: #3b82f6;
+  --gradient-end: #06b6d4;
+  --nav-bg: rgba(240, 247, 255, 0.85);
+  --nav-border: rgba(59, 130, 246, 0.25);
+  --toggle-ring: rgba(59, 130, 246, 0.4);
+}
+
+/* --- Blue Dark Theme --- */
+[data-theme="blue-dark"] {
+  --primary: #60a5fa;
+  --primary-dark: #2563eb;
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --text: #e2e8f0;
+  --accent: #22d3ee;
+  --border: #334155;
+  --card-shadow: 0 4px 16px rgba(96, 165, 250, 0.15);
+  --glow: 0 0 20px rgba(96, 165, 250, 0.4);
+  --gradient-start: #60a5fa;
+  --gradient-end: #22d3ee;
+  --nav-bg: rgba(15, 23, 42, 0.85);
+  --nav-border: rgba(96, 165, 250, 0.3);
+  --toggle-ring: rgba(96, 165, 250, 0.5);
+}
+
+/* --- Red Light Theme --- */
+[data-theme="red-light"] {
+  --primary: #ef4444;
+  --primary-dark: #991b1b;
+  --bg: #fff5f5;
+  --surface: #ffffff;
+  --text: #1e293b;
+  --accent: #f97316;
+  --border: #fecaca;
+  --card-shadow: 0 4px 16px rgba(239, 68, 68, 0.12);
+  --glow: 0 0 20px rgba(239, 68, 68, 0.3);
+  --gradient-start: #ef4444;
+  --gradient-end: #f97316;
+  --nav-bg: rgba(255, 245, 245, 0.85);
+  --nav-border: rgba(239, 68, 68, 0.25);
+  --toggle-ring: rgba(239, 68, 68, 0.4);
+}
+
+/* --- Red Dark Theme --- */
+[data-theme="red-dark"] {
+  --primary: #f87171;
+  --primary-dark: #dc2626;
+  --bg: #1a0a0a;
+  --surface: #2d1515;
+  --text: #fecaca;
+  --accent: #fb923c;
+  --border: #4a2020;
+  --card-shadow: 0 4px 16px rgba(248, 113, 113, 0.15);
+  --glow: 0 0 20px rgba(248, 113, 113, 0.4);
+  --gradient-start: #f87171;
+  --gradient-end: #fb923c;
+  --nav-bg: rgba(26, 10, 10, 0.85);
+  --nav-border: rgba(248, 113, 113, 0.3);
+  --toggle-ring: rgba(248, 113, 113, 0.5);
+}
+
+/* ============================================
+   Base Styles
+   ============================================ */
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  html,
+  body {
+    transition: background-color 0.35s ease, color 0.35s ease;
+  }
+
+  body {
+    color: var(--text);
+    background-color: var(--bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Headings use Fredoka */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-fredoka, "Fredoka", sans-serif);
+  }
+
+  /* All themed elements transition smoothly */
+  *,
+  *::before,
+  *::after {
+    transition-property: background-color, border-color, box-shadow;
+    transition-duration: 0.3s;
+    transition-timing-function: ease;
+  }
+
+  /* Reset transitions for transforms/positions to avoid lag */
+  a, button, input, select, textarea, canvas {
+    transition-property: background-color, border-color, box-shadow, color, opacity;
+    transition-duration: 0.2s;
+  }
+}
+
+/* ============================================
+   Component Utilities
+   ============================================ */
+
+@layer components {
+  /* Gradient text helper */
+  .text-gradient {
+    background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Card styling */
+  .theme-card {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: var(--card-shadow);
+    border-radius: 1rem;
+  }
+
+  /* Glow effect on hover */
+  .theme-glow:hover {
+    box-shadow: var(--glow);
+  }
+
+  /* Theme-colored button */
+  .btn-primary {
+    background-color: var(--primary);
+    color: #ffffff;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.75rem;
+    font-weight: 600;
+    font-family: var(--font-fredoka, "Fredoka", sans-serif);
+    font-size: 1.1rem;
+    border: none;
+    cursor: pointer;
+    min-height: 48px;
+    min-width: 48px;
+  }
+
+  .btn-primary:hover {
+    background-color: var(--primary-dark);
+    box-shadow: var(--glow);
+    transform: scale(1.03);
+  }
+
+  .btn-primary:active {
+    transform: scale(0.97);
+  }
+
+  /* Large touch targets for kids (48px minimum) */
+  .touch-target {
+    min-height: 48px;
+    min-width: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* ============================================
+   Utility Classes
+   ============================================ */
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Backdrop blur for navbar */
+  .nav-blur {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+}
+
+/* ============================================
+   Game-specific Animations
+   ============================================ */
+
+/* XP notification fade-up */
+@keyframes xp-fade-up {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(-24px) scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-48px) scale(0.9);
+  }
+}
+
+.xp-fade {
+  animation: xp-fade-up 2.2s ease-out forwards;
+}
+
+/* Hero float animation */
+@keyframes hero-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.hero-float {
+  animation: hero-float 3s ease-in-out infinite;
+}
+
+/* Game card entrance */
+@keyframes card-pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.85) translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.card-pop-in {
+  animation: card-pop-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}

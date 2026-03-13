@@ -1,0 +1,10 @@
+services:
+  yoel-the-g:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-yoel-admin-2024}
+    restart: unless-stopped
