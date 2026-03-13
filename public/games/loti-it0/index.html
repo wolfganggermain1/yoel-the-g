@@ -1,0 +1,1478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>LOTI IT0</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #000; touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+<script>
+// ============================================================
+// PLATFORM THEME INTEGRATION
+// ============================================================
+let platformTheme = 'blue-light';
+try { platformTheme = window.parent.document.documentElement.getAttribute('data-theme') || 'blue-light'; } catch(e) {}
+const THEMES = {
+  'blue-light':  { primary: '#3b82f6', dark: '#1e40af', bg: '#f0f7ff', surface: '#ffffff', text: '#1e293b', accent: '#93c5fd', glow: 'rgba(59,130,246,0.4)' },
+  'blue-dark':   { primary: '#60a5fa', dark: '#2563eb', bg: '#0f172a', surface: '#1e293b', text: '#e2e8f0', accent: '#1e3a5f', glow: 'rgba(96,165,250,0.3)' },
+  'red-light':   { primary: '#ef4444', dark: '#991b1b', bg: '#fff5f5', surface: '#ffffff', text: '#1e293b', accent: '#fca5a5', glow: 'rgba(239,68,68,0.4)' },
+  'red-dark':    { primary: '#f87171', dark: '#dc2626', bg: '#1a0a0a', surface: '#2d1515', text: '#fecaca', accent: '#4a1515', glow: 'rgba(248,113,113,0.3)' },
+};
+const theme = THEMES[platformTheme] || THEMES['blue-light'];
+
+// ============================================================
+// XP REPORTING
+// ============================================================
+let xpTimer = 0;
+function reportXP() { try { window.parent.postMessage({ type: 'xp', amount: 10 }, '*'); } catch(e) {} }
+function onGameOver(finalScore) { try { window.parent.postMessage({ type: 'gameOver', score: finalScore }, '*'); } catch(e) {} }
+
+// ============================================================
+// CANVAS SETUP
+// ============================================================
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function resize() {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = W;
+  canvas.height = H;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ============================================================
+// AUDIO ENGINE
+// ============================================================
+let audioCtx = null;
+let muted = false;
+
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+}
+
+function playSound(type) {
+  if (muted || !audioCtx) return;
+  const now = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  switch(type) {
+    case 'draw': // short soft blip
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(600, now);
+      osc.frequency.exponentialRampToValueAtTime(800, now + 0.05);
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+      osc.start(now); osc.stop(now + 0.08);
+      break;
+    case 'stamp': // fun pop
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(400, now);
+      osc.frequency.exponentialRampToValueAtTime(900, now + 0.12);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      osc.start(now); osc.stop(now + 0.15);
+      break;
+    case 'collect': // rising tone
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(500, now);
+      osc.frequency.exponentialRampToValueAtTime(1200, now + 0.15);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      osc.start(now); osc.stop(now + 0.2);
+      break;
+    case 'powerup': // ascending arpeggio
+      for (let i = 0; i < 4; i++) {
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.connect(g); g.connect(audioCtx.destination);
+        o.type = 'sine';
+        o.frequency.setValueAtTime(400 + i * 200, now + i * 0.08);
+        g.gain.setValueAtTime(0.12, now + i * 0.08);
+        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.15);
+        o.start(now + i * 0.08); o.stop(now + i * 0.08 + 0.15);
+      }
+      break;
+    case 'undo': // descending blip
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(600, now);
+      osc.frequency.exponentialRampToValueAtTime(300, now + 0.12);
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      osc.start(now); osc.stop(now + 0.15);
+      break;
+    case 'clear': // low buzz
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(150, now);
+      gain.gain.setValueAtTime(0.1, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+      osc.start(now); osc.stop(now + 0.25);
+      break;
+    case 'timesup': // descending tone
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(600, now);
+      osc.frequency.exponentialRampToValueAtTime(100, now + 0.5);
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+      osc.start(now); osc.stop(now + 0.6);
+      break;
+    case 'click': // UI click
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(800, now);
+      gain.gain.setValueAtTime(0.1, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+      osc.start(now); osc.stop(now + 0.05);
+      break;
+  }
+}
+
+// ============================================================
+// GAME CONSTANTS
+// ============================================================
+const COLORS = ['#FF4444', '#FF8C00', '#FFD700', '#44CC44', '#00BFFF', '#6B5BFF', '#FF69B4', '#8B4513', '#333333', '#FFFFFF'];
+const COLOR_NAMES = ['Red', 'Orange', 'Yellow', 'Green', 'Blue', 'Purple', 'Pink', 'Brown', 'Black', 'White'];
+const BRUSH_SIZES = [4, 10, 20];
+const BRUSH_LABELS = ['S', 'M', 'L'];
+const STAMPS = ['🏠', '🚗', '🌳', '⭐', '🎈', '🍕'];
+const COUNTDOWN_TIME = 90; // 90 seconds
+
+// ============================================================
+// GAME STATE
+// ============================================================
+let gameState = 'start'; // 'start', 'playing', 'timesup'
+let currentColor = '#333333';
+let currentBrushSize = 10;
+let isEraser = false;
+let selectedStamp = -1; // -1 = no stamp
+let score = 0;
+let timeLeft = COUNTDOWN_TIME;
+let totalDrawTime = 0;
+let isDrawing = false;
+let lastX = 0, lastY = 0;
+let titlePulse = 0;
+let floatingTexts = [];
+let particles = [];
+let screenShake = { x: 0, y: 0, time: 0 };
+
+// Drawing layers for undo
+let drawingLayers = [];
+let currentLayerCanvas = null;
+let currentLayerCtx = null;
+const MAX_UNDO = 30;
+
+// Power-ups
+let activePowerUp = null; // { type, timeLeft, duration }
+let powerUpSpawnTimer = 0;
+let powerUpOnCanvas = null; // { type, x, y, time }
+const POWERUP_TYPES = ['speed', 'shield', 'multiplier', 'extralife'];
+const POWERUP_LABELS = { speed: 'FAST', shield: 'SHIELD', multiplier: '2X', extralife: '+LIFE' };
+const POWERUP_COLORS = { speed: '#00BFFF', shield: '#FFD700', multiplier: '#FF69B4', extralife: '#44CC44' };
+
+// City background data
+let buildings = [];
+let clouds = [];
+let cars = [];
+
+// UI buttons
+let buttons = {};
+let pressedButton = null;
+
+// Mute button
+let muteBtn = { x: 0, y: 0, size: 40 };
+
+// XP reporting interval
+let xpAccumulator = 0;
+
+// ============================================================
+// CITY BACKGROUND GENERATION
+// ============================================================
+function generateCity() {
+  buildings = [];
+  const bCount = Math.floor(W / 40) + 5;
+  for (let i = 0; i < bCount; i++) {
+    const w = 30 + Math.random() * 50;
+    const h = 60 + Math.random() * (H * 0.35);
+    const hue = Math.random() * 360;
+    buildings.push({
+      x: i * (W / bCount) - 10,
+      w: w + 10,
+      h: h,
+      color: `hsl(${hue}, 60%, ${55 + Math.random() * 20}%)`,
+      windowColor: `hsl(${hue + 30}, 40%, 85%)`,
+      windows: Math.floor(h / 25)
+    });
+  }
+
+  clouds = [];
+  for (let i = 0; i < 6; i++) {
+    clouds.push({ x: Math.random() * W, y: 30 + Math.random() * H * 0.15, size: 30 + Math.random() * 50, speed: 10 + Math.random() * 20 });
+  }
+
+  cars = [];
+  for (let i = 0; i < 4; i++) {
+    cars.push({
+      x: Math.random() * W,
+      y: H - 35 - Math.random() * 10,
+      w: 40 + Math.random() * 20,
+      color: `hsl(${Math.random() * 360}, 70%, 55%)`,
+      speed: (50 + Math.random() * 80) * (Math.random() < 0.5 ? 1 : -1),
+      dir: Math.random() < 0.5 ? 1 : -1
+    });
+  }
+}
+
+function drawCityBackground(dt) {
+  // Sky gradient (sunset)
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, H);
+  skyGrad.addColorStop(0, '#FF8C42');
+  skyGrad.addColorStop(0.3, '#FFB366');
+  skyGrad.addColorStop(0.6, '#87CEEB');
+  skyGrad.addColorStop(1, '#E0F0FF');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Sun
+  ctx.beginPath();
+  ctx.arc(W * 0.8, H * 0.12, 40, 0, Math.PI * 2);
+  ctx.fillStyle = '#FFD700';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(W * 0.8, H * 0.12, 50, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255, 215, 0, 0.2)';
+  ctx.fill();
+
+  // Clouds
+  for (const c of clouds) {
+    c.x += c.speed * dt;
+    if (c.x > W + 100) c.x = -100;
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.size * 0.6, 0, Math.PI * 2);
+    ctx.arc(c.x + c.size * 0.4, c.y - c.size * 0.15, c.size * 0.5, 0, Math.PI * 2);
+    ctx.arc(c.x + c.size * 0.8, c.y, c.size * 0.45, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Buildings
+  const groundY = H - 50;
+  for (const b of buildings) {
+    ctx.fillStyle = b.color;
+    ctx.fillRect(b.x, groundY - b.h, b.w, b.h);
+    // Windows
+    const wSize = 6;
+    const gap = 14;
+    for (let wy = 0; wy < b.windows; wy++) {
+      for (let wx = 0; wx < Math.floor(b.w / gap) - 1; wx++) {
+        ctx.fillStyle = Math.random() > 0.3 ? b.windowColor : 'rgba(255,200,50,0.8)';
+        ctx.fillRect(b.x + 8 + wx * gap, groundY - b.h + 10 + wy * (gap + 2), wSize, wSize + 2);
+      }
+    }
+  }
+
+  // Road
+  ctx.fillStyle = '#555';
+  ctx.fillRect(0, groundY, W, 50);
+  // Road lines
+  ctx.setLineDash([20, 15]);
+  ctx.strokeStyle = '#FFD700';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, groundY + 25);
+  ctx.lineTo(W, groundY + 25);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Crosswalk
+  const cwX = W * 0.5 - 25;
+  ctx.fillStyle = '#FFF';
+  for (let i = 0; i < 6; i++) {
+    ctx.fillRect(cwX, groundY + 4 + i * 8, 50, 4);
+  }
+
+  // Traffic light
+  const tlX = cwX - 15;
+  ctx.fillStyle = '#333';
+  ctx.fillRect(tlX, groundY - 50, 10, 40);
+  ctx.fillRect(tlX - 5, groundY - 55, 20, 25);
+  ctx.beginPath();
+  ctx.arc(tlX + 5, groundY - 48, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#FF3333';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(tlX + 5, groundY - 38, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#44CC44';
+  ctx.fill();
+
+  // Cars
+  for (const car of cars) {
+    car.x += car.speed * dt;
+    if (car.x > W + 60) car.x = -60;
+    if (car.x < -60) car.x = W + 60;
+
+    // Car body
+    ctx.fillStyle = car.color;
+    const cy = groundY + 10;
+    ctx.beginPath();
+    ctx.roundRect(car.x - car.w/2, cy - 10, car.w, 14, 3);
+    ctx.fill();
+    // Car top
+    ctx.fillStyle = car.color;
+    ctx.beginPath();
+    ctx.roundRect(car.x - car.w/4, cy - 20, car.w/2, 12, 3);
+    ctx.fill();
+    // Wheels
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.arc(car.x - car.w/3, cy + 4, 5, 0, Math.PI * 2);
+    ctx.arc(car.x + car.w/3, cy + 4, 5, 0, Math.PI * 2);
+    ctx.fill();
+    // Window
+    ctx.fillStyle = 'rgba(135,206,235,0.8)';
+    ctx.fillRect(car.x - car.w/5, cy - 18, car.w * 0.35, 8);
+  }
+
+  // Sidewalk
+  ctx.fillStyle = '#CCC';
+  ctx.fillRect(0, groundY - 4, W, 4);
+}
+
+// ============================================================
+// DRAWING LAYER SYSTEM
+// ============================================================
+function createNewLayer() {
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  currentLayerCanvas = c;
+  currentLayerCtx = c.getContext('2d');
+}
+
+function saveCurrentLayer() {
+  if (currentLayerCanvas) {
+    drawingLayers.push(currentLayerCanvas);
+    if (drawingLayers.length > MAX_UNDO) drawingLayers.shift();
+  }
+  createNewLayer();
+}
+
+function undo() {
+  if (drawingLayers.length > 0) {
+    drawingLayers.pop();
+    createNewLayer();
+    playSound('undo');
+    addFloatingText('UNDO!', W / 2, H / 2, theme.primary);
+  }
+}
+
+function clearAll() {
+  drawingLayers = [];
+  createNewLayer();
+  playSound('clear');
+  addFloatingText('CLEARED!', W / 2, H / 2, '#FF4444');
+  triggerShake();
+}
+
+function renderAllLayers() {
+  for (const layer of drawingLayers) {
+    ctx.drawImage(layer, 0, 0);
+  }
+  if (currentLayerCanvas) {
+    ctx.drawImage(currentLayerCanvas, 0, 0);
+  }
+}
+
+// ============================================================
+// PARTICLES & EFFECTS
+// ============================================================
+function addParticle(x, y, color, count) {
+  for (let i = 0; i < Math.min(count, 12); i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 200,
+      vy: (Math.random() - 0.5) * 200 - 50,
+      life: 0.5 + Math.random() * 0.5,
+      maxLife: 0.5 + Math.random() * 0.5,
+      size: 3 + Math.random() * 5,
+      color: color
+    });
+  }
+  if (particles.length > 50) particles = particles.slice(-50);
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 200 * dt;
+    p.life -= dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    const alpha = p.life / p.maxLife;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function addFloatingText(text, x, y, color) {
+  floatingTexts.push({ text, x, y, vy: -60, life: 1.2, maxLife: 1.2, color, scale: 1.3 });
+}
+
+function updateFloatingTexts(dt) {
+  for (let i = floatingTexts.length - 1; i >= 0; i--) {
+    const ft = floatingTexts[i];
+    ft.y += ft.vy * dt;
+    ft.life -= dt;
+    ft.scale = Math.max(1, ft.scale - dt * 0.5);
+    if (ft.life <= 0) floatingTexts.splice(i, 1);
+  }
+}
+
+function drawFloatingTexts() {
+  for (const ft of floatingTexts) {
+    const alpha = Math.min(1, ft.life / (ft.maxLife * 0.3));
+    ctx.globalAlpha = alpha;
+    ctx.save();
+    ctx.translate(ft.x, ft.y);
+    ctx.scale(ft.scale, ft.scale);
+    ctx.font = 'bold 22px sans-serif';
+    ctx.fillStyle = ft.color;
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 3;
+    ctx.textAlign = 'center';
+    ctx.strokeText(ft.text, 0, 0);
+    ctx.fillText(ft.text, 0, 0);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function triggerShake() {
+  screenShake.time = 0.15;
+}
+
+function updateShake(dt) {
+  if (screenShake.time > 0) {
+    screenShake.time -= dt;
+    screenShake.x = (Math.random() - 0.5) * 6;
+    screenShake.y = (Math.random() - 0.5) * 6;
+  } else {
+    screenShake.x = 0;
+    screenShake.y = 0;
+  }
+}
+
+// ============================================================
+// POWER-UP SYSTEM
+// ============================================================
+function spawnPowerUp() {
+  const padding = 100;
+  const type = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
+  powerUpOnCanvas = {
+    type,
+    x: padding + Math.random() * (W - padding * 2),
+    y: padding + Math.random() * (H - padding * 3),
+    time: 0
+  };
+}
+
+function collectPowerUp(pu) {
+  let duration = 10;
+  if (pu.type === 'shield') duration = 3;
+  if (pu.type === 'extralife') {
+    duration = 0;
+    timeLeft = Math.min(timeLeft + 15, COUNTDOWN_TIME);
+    addFloatingText('+15 SEC!', pu.x, pu.y, POWERUP_COLORS.extralife);
+  } else {
+    activePowerUp = { type: pu.type, timeLeft: duration, duration: duration };
+    addFloatingText(POWERUP_LABELS[pu.type] + '!', pu.x, pu.y, POWERUP_COLORS[pu.type]);
+  }
+  playSound('powerup');
+  addParticle(pu.x, pu.y, POWERUP_COLORS[pu.type], 12);
+  powerUpOnCanvas = null;
+  score += getScoreMultiplier() * 25;
+}
+
+function getScoreMultiplier() {
+  return (activePowerUp && activePowerUp.type === 'multiplier') ? 2 : 1;
+}
+
+function drawPowerUpOnCanvas(time) {
+  if (!powerUpOnCanvas) return;
+  const pu = powerUpOnCanvas;
+  pu.time += 0.016;
+  const pulse = 1 + Math.sin(pu.time * 5) * 0.15;
+  const size = 25 * pulse;
+
+  // Glow
+  ctx.beginPath();
+  ctx.arc(pu.x, pu.y, size + 10, 0, Math.PI * 2);
+  ctx.fillStyle = POWERUP_COLORS[pu.type] + '33';
+  ctx.fill();
+
+  // Circle
+  ctx.beginPath();
+  ctx.arc(pu.x, pu.y, size, 0, Math.PI * 2);
+  ctx.fillStyle = POWERUP_COLORS[pu.type];
+  ctx.fill();
+  ctx.strokeStyle = '#FFF';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Label
+  ctx.font = 'bold 12px sans-serif';
+  ctx.fillStyle = '#FFF';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(POWERUP_LABELS[pu.type], pu.x, pu.y);
+}
+
+function drawActivePowerUpHUD() {
+  if (!activePowerUp) return;
+  const pu = activePowerUp;
+  const px = W - 60;
+  const py = 80;
+  const barW = 40;
+  const barH = 6;
+  const ratio = pu.timeLeft / pu.duration;
+
+  // Icon bg
+  ctx.beginPath();
+  ctx.arc(px, py, 18, 0, Math.PI * 2);
+  ctx.fillStyle = POWERUP_COLORS[pu.type];
+  ctx.fill();
+  ctx.font = 'bold 10px sans-serif';
+  ctx.fillStyle = '#FFF';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(POWERUP_LABELS[pu.type], px, py);
+
+  // Duration bar
+  ctx.fillStyle = '#555';
+  ctx.fillRect(px - barW/2, py + 22, barW, barH);
+  ctx.fillStyle = POWERUP_COLORS[pu.type];
+  ctx.fillRect(px - barW/2, py + 22, barW * ratio, barH);
+}
+
+// ============================================================
+// UI BUTTON SYSTEM
+// ============================================================
+function calcButtons() {
+  const isPortrait = H > W;
+  const gap = 5;
+  // Adaptive sizing: smaller on narrow screens
+  const colorSize = isPortrait ? Math.max(28, Math.min(34, (W - 40) / 12)) : Math.max(32, Math.min(44, W / 14));
+  const btnSize = Math.max(44, Math.min(54, W / 9));
+  const stampSize = Math.max(46, Math.min(54, W / 8));
+
+  buttons = {};
+
+  if (gameState === 'playing') {
+    // === COLOR PALETTE - bottom, 2 rows on mobile ===
+    const colorsPerRow = isPortrait ? 5 : COLORS.length;
+    const rows = Math.ceil(COLORS.length / colorsPerRow);
+    const paletteW = colorsPerRow * (colorSize + gap) + gap;
+    const paletteStartX = (W - paletteW) / 2;
+    const paletteBaseY = H - (rows * (colorSize + gap)) - 10;
+
+    for (let i = 0; i < COLORS.length; i++) {
+      const row = Math.floor(i / colorsPerRow);
+      const col = i % colorsPerRow;
+      buttons['color_' + i] = {
+        x: paletteStartX + gap + col * (colorSize + gap),
+        y: paletteBaseY + row * (colorSize + gap),
+        w: colorSize, h: colorSize,
+        type: 'color', index: i, round: true
+      };
+    }
+
+    // Eraser - to the right of palette on last row
+    const eraserRow = rows - 1;
+    const eraserCol = COLORS.length % colorsPerRow;
+    buttons.eraser = {
+      x: paletteStartX + gap + eraserCol * (colorSize + gap),
+      y: paletteBaseY + eraserRow * (colorSize + gap),
+      w: colorSize, h: colorSize,
+      type: 'eraser', round: true
+    };
+
+    // === BRUSH SIZES - bottom left, above palette ===
+    const brushY = paletteBaseY - btnSize - 12;
+    for (let i = 0; i < BRUSH_SIZES.length; i++) {
+      buttons['brush_' + i] = {
+        x: 10 + i * (btnSize + gap),
+        y: brushY,
+        w: btnSize, h: btnSize,
+        type: 'brush', index: i
+      };
+    }
+
+    // === STAMPS - right side column ===
+    const stampGap = 6;
+    const stampTotalH = STAMPS.length * (stampSize + stampGap);
+    const stampStartY = isPortrait ? 100 : Math.max(100, (H - stampTotalH) / 2);
+    for (let i = 0; i < STAMPS.length; i++) {
+      buttons['stamp_' + i] = {
+        x: W - stampSize - 8,
+        y: stampStartY + i * (stampSize + stampGap),
+        w: stampSize, h: stampSize,
+        type: 'stamp', index: i
+      };
+    }
+
+    // === ACTION BUTTONS - top row ===
+    const actionBtnW = isPortrait ? Math.min(64, (W - 80) / 3) : btnSize * 1.4;
+    const actionBtnH = isPortrait ? 36 : btnSize * 0.9;
+    const actionY = 48;
+    buttons.undo  = { x: 10, y: actionY, w: actionBtnW, h: actionBtnH, type: 'action', action: 'undo', label: 'UNDO' };
+    buttons.clear = { x: 10 + actionBtnW + gap, y: actionY, w: actionBtnW, h: actionBtnH, type: 'action', action: 'clear', label: 'CLEAR' };
+    buttons.save  = { x: 10 + (actionBtnW + gap) * 2, y: actionY, w: actionBtnW, h: actionBtnH, type: 'action', action: 'save', label: 'SAVE' };
+  }
+
+  // Mute button - below score
+  muteBtn.x = W - 46;
+  muteBtn.y = 50;
+  muteBtn.size = 36;
+}
+
+function drawButton(key, btn) {
+  const isPressed = pressedButton === key;
+  const scale = isPressed ? 0.92 : 1;
+
+  ctx.save();
+  ctx.translate(btn.x + btn.w / 2, btn.y + btn.h / 2);
+  ctx.scale(scale, scale);
+  ctx.translate(-btn.w / 2, -btn.h / 2);
+
+  if (btn.type === 'color') {
+    const isSelected = !isEraser && selectedStamp === -1 && currentColor === COLORS[btn.index];
+    ctx.beginPath();
+    ctx.arc(btn.w / 2, btn.h / 2, btn.w / 2 - 2, 0, Math.PI * 2);
+    ctx.fillStyle = COLORS[btn.index];
+    ctx.fill();
+    if (isSelected) {
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#FFF';
+      ctx.stroke();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#000';
+      ctx.stroke();
+    }
+  } else if (btn.type === 'eraser') {
+    ctx.beginPath();
+    ctx.arc(btn.w / 2, btn.h / 2, btn.w / 2 - 2, 0, Math.PI * 2);
+    ctx.fillStyle = isEraser ? '#FFF' : '#DDD';
+    ctx.fill();
+    ctx.strokeStyle = isEraser ? theme.primary : '#999';
+    ctx.lineWidth = isEraser ? 3 : 1;
+    ctx.stroke();
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillStyle = '#666';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('ERZ', btn.w / 2, btn.h / 2);
+  } else if (btn.type === 'brush') {
+    const isSelected = currentBrushSize === BRUSH_SIZES[btn.index] && selectedStamp === -1;
+    ctx.fillStyle = isSelected ? theme.primary : theme.surface;
+    ctx.strokeStyle = isSelected ? theme.dark : '#AAA';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(0, 0, btn.w, btn.h, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    // Draw brush size dot
+    ctx.beginPath();
+    ctx.arc(btn.w / 2, btn.h / 2 - 4, BRUSH_SIZES[btn.index] / 2, 0, Math.PI * 2);
+    ctx.fillStyle = isSelected ? '#FFF' : '#333';
+    ctx.fill();
+
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillStyle = isSelected ? '#FFF' : '#666';
+    ctx.textAlign = 'center';
+    ctx.fillText(BRUSH_LABELS[btn.index], btn.w / 2, btn.h - 6);
+  } else if (btn.type === 'stamp') {
+    const isSelected = selectedStamp === btn.index;
+    ctx.fillStyle = isSelected ? theme.primary + '44' : theme.surface + 'CC';
+    ctx.strokeStyle = isSelected ? theme.primary : '#AAA';
+    ctx.lineWidth = isSelected ? 3 : 1;
+    ctx.beginPath();
+    ctx.roundRect(0, 0, btn.w, btn.h, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = `${btn.w * 0.55}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(STAMPS[btn.index], btn.w / 2, btn.h / 2);
+  } else if (btn.type === 'action') {
+    ctx.fillStyle = btn.action === 'clear' ? '#FF5555' : btn.action === 'save' ? '#44CC44' : theme.primary;
+    ctx.beginPath();
+    ctx.roundRect(0, 0, btn.w, btn.h, 8);
+    ctx.fill();
+
+    ctx.font = 'bold 13px sans-serif';
+    ctx.fillStyle = '#FFF';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(btn.label, btn.w / 2, btn.h / 2);
+  }
+
+  ctx.restore();
+}
+
+function drawMuteButton() {
+  const x = muteBtn.x;
+  const y = muteBtn.y;
+  const s = muteBtn.size;
+
+  ctx.fillStyle = theme.surface + 'CC';
+  ctx.strokeStyle = theme.primary;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(x, y, s, s, 6);
+  ctx.fill();
+  ctx.stroke();
+
+  // Speaker icon
+  ctx.fillStyle = theme.text;
+  ctx.beginPath();
+  ctx.moveTo(x + 8, y + 13);
+  ctx.lineTo(x + 14, y + 13);
+  ctx.lineTo(x + 20, y + 8);
+  ctx.lineTo(x + 20, y + 28);
+  ctx.lineTo(x + 14, y + 23);
+  ctx.lineTo(x + 8, y + 23);
+  ctx.closePath();
+  ctx.fill();
+
+  if (muted) {
+    ctx.strokeStyle = '#FF4444';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x + 6, y + 6);
+    ctx.lineTo(x + s - 6, y + s - 6);
+    ctx.stroke();
+  } else {
+    ctx.strokeStyle = theme.text;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x + 22, y + s / 2, 6, -0.5, 0.5);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x + 22, y + s / 2, 10, -0.6, 0.6);
+    ctx.stroke();
+  }
+}
+
+function hitButton(px, py) {
+  for (const key in buttons) {
+    const b = buttons[key];
+    if (px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h) {
+      return key;
+    }
+  }
+  // Mute button
+  if (px >= muteBtn.x && px <= muteBtn.x + muteBtn.size && py >= muteBtn.y && py <= muteBtn.y + muteBtn.size) {
+    return 'mute';
+  }
+  return null;
+}
+
+function handleButtonPress(key) {
+  if (key === 'mute') {
+    muted = !muted;
+    playSound('click');
+    return;
+  }
+
+  const btn = buttons[key];
+  if (!btn) return;
+
+  playSound('click');
+
+  if (btn.type === 'color') {
+    currentColor = COLORS[btn.index];
+    isEraser = false;
+    selectedStamp = -1;
+  } else if (btn.type === 'eraser') {
+    isEraser = true;
+    selectedStamp = -1;
+  } else if (btn.type === 'brush') {
+    currentBrushSize = BRUSH_SIZES[btn.index];
+    selectedStamp = -1;
+  } else if (btn.type === 'stamp') {
+    if (selectedStamp === btn.index) {
+      selectedStamp = -1; // Toggle off
+    } else {
+      selectedStamp = btn.index;
+      isEraser = false;
+    }
+  } else if (btn.type === 'action') {
+    if (btn.action === 'undo') undo();
+    else if (btn.action === 'clear') clearAll();
+    else if (btn.action === 'save') saveDrawing();
+  }
+}
+
+// ============================================================
+// SAVE DRAWING
+// ============================================================
+function saveDrawing() {
+  const saveCanvas = document.createElement('canvas');
+  saveCanvas.width = W;
+  saveCanvas.height = H;
+  const sCtx = saveCanvas.getContext('2d');
+
+  // Draw background
+  const skyGrad = sCtx.createLinearGradient(0, 0, 0, H);
+  skyGrad.addColorStop(0, '#FF8C42');
+  skyGrad.addColorStop(0.3, '#FFB366');
+  skyGrad.addColorStop(0.6, '#87CEEB');
+  skyGrad.addColorStop(1, '#E0F0FF');
+  sCtx.fillStyle = skyGrad;
+  sCtx.fillRect(0, 0, W, H);
+
+  // Draw all layers
+  for (const layer of drawingLayers) {
+    sCtx.drawImage(layer, 0, 0);
+  }
+  if (currentLayerCanvas) {
+    sCtx.drawImage(currentLayerCanvas, 0, 0);
+  }
+
+  // Watermark
+  sCtx.font = 'bold 16px sans-serif';
+  sCtx.fillStyle = 'rgba(0,0,0,0.3)';
+  sCtx.textAlign = 'right';
+  sCtx.fillText('LOTI IT0 by Yoel', W - 10, H - 10);
+
+  const link = document.createElement('a');
+  link.download = 'LOTI-IT0-drawing.png';
+  link.href = saveCanvas.toDataURL('image/png');
+  link.click();
+
+  addFloatingText('SAVED!', W / 2, H / 2, '#44CC44');
+  playSound('collect');
+}
+
+// ============================================================
+// DRAWING LOGIC
+// ============================================================
+function drawStroke(x1, y1, x2, y2) {
+  if (!currentLayerCtx) return;
+  const c = currentLayerCtx;
+  c.lineCap = 'round';
+  c.lineJoin = 'round';
+
+  if (isEraser) {
+    c.globalCompositeOperation = 'destination-out';
+    c.lineWidth = currentBrushSize * 3;
+    c.strokeStyle = 'rgba(0,0,0,1)';
+  } else {
+    c.globalCompositeOperation = 'source-over';
+    c.lineWidth = currentBrushSize;
+    c.strokeStyle = currentColor;
+  }
+
+  c.beginPath();
+  c.moveTo(x1, y1);
+  c.lineTo(x2, y2);
+  c.stroke();
+  c.globalCompositeOperation = 'source-over';
+}
+
+function placeStamp(x, y) {
+  if (selectedStamp < 0 || !currentLayerCtx) return;
+  saveCurrentLayer();
+  const c = currentLayerCtx;
+  const size = currentBrushSize * 3 + 20;
+  c.font = `${size}px sans-serif`;
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillText(STAMPS[selectedStamp], x, y);
+  playSound('stamp');
+  addParticle(x, y, theme.primary, 6);
+  score += getScoreMultiplier() * 5;
+  addFloatingText('+' + (getScoreMultiplier() * 5), x, y - 20, '#FFD700');
+}
+
+// ============================================================
+// INPUT HANDLING
+// ============================================================
+let touches = {};
+
+function getPos(e) {
+  if (e.touches) {
+    return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }
+  return { x: e.clientX, y: e.clientY };
+}
+
+function onPointerDown(x, y) {
+  initAudio();
+
+  if (gameState === 'start') {
+    startGame();
+    return;
+  }
+
+  if (gameState === 'timesup') {
+    // Check for New Canvas / Save buttons
+    const btnW = 180;
+    const btnH = 56;
+    const centerX = W / 2;
+    const centerY = H / 2 + 50;
+
+    // New Canvas button
+    if (x >= centerX - btnW - 10 && x <= centerX - 10 && y >= centerY && y <= centerY + btnH) {
+      startGame();
+      return;
+    }
+    // Save button
+    if (x >= centerX + 10 && x <= centerX + btnW + 10 && y >= centerY && y <= centerY + btnH) {
+      saveDrawing();
+      return;
+    }
+    return;
+  }
+
+  // Check buttons first
+  const hitBtn = hitButton(x, y);
+  if (hitBtn) {
+    pressedButton = hitBtn;
+    handleButtonPress(hitBtn);
+    return;
+  }
+
+  // Check power-up
+  if (powerUpOnCanvas) {
+    const dx = x - powerUpOnCanvas.x;
+    const dy = y - powerUpOnCanvas.y;
+    if (dx * dx + dy * dy < 40 * 40) {
+      collectPowerUp(powerUpOnCanvas);
+      return;
+    }
+  }
+
+  // Start drawing or stamping
+  if (selectedStamp >= 0) {
+    placeStamp(x, y);
+  } else {
+    isDrawing = true;
+    lastX = x;
+    lastY = y;
+    saveCurrentLayer();
+    drawStroke(x, y, x, y);
+  }
+}
+
+function onPointerMove(x, y) {
+  if (gameState !== 'playing') return;
+  if (!isDrawing) return;
+
+  drawStroke(lastX, lastY, x, y);
+  lastX = x;
+  lastY = y;
+
+  // Award points for drawing
+  score += getScoreMultiplier();
+}
+
+function onPointerUp() {
+  isDrawing = false;
+  pressedButton = null;
+}
+
+// Touch events
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const pos = getPos(e);
+  onPointerDown(pos.x, pos.y);
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  const pos = getPos(e);
+  onPointerMove(pos.x, pos.y);
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  onPointerUp();
+}, { passive: false });
+
+// Mouse events
+canvas.addEventListener('mousedown', (e) => {
+  const pos = { x: e.clientX, y: e.clientY };
+  onPointerDown(pos.x, pos.y);
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  const pos = { x: e.clientX, y: e.clientY };
+  onPointerMove(pos.x, pos.y);
+});
+
+canvas.addEventListener('mouseup', () => { onPointerUp(); });
+canvas.addEventListener('mouseleave', () => { onPointerUp(); });
+
+// Keyboard
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'z' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    if (gameState === 'playing') undo();
+  }
+  if (e.key === 'm') {
+    muted = !muted;
+  }
+});
+
+// ============================================================
+// GAME FLOW
+// ============================================================
+function startGame() {
+  gameState = 'playing';
+  score = 0;
+  timeLeft = COUNTDOWN_TIME;
+  totalDrawTime = 0;
+  drawingLayers = [];
+  particles = [];
+  floatingTexts = [];
+  activePowerUp = null;
+  powerUpOnCanvas = null;
+  powerUpSpawnTimer = 20 + Math.random() * 10;
+  xpAccumulator = 0;
+  isDrawing = false;
+  selectedStamp = -1;
+  isEraser = false;
+  currentColor = '#333333';
+  currentBrushSize = 10;
+  generateCity();
+  createNewLayer();
+  calcButtons();
+  playSound('collect');
+}
+
+function endDrawing() {
+  gameState = 'timesup';
+  playSound('timesup');
+  onGameOver(score);
+  triggerShake();
+}
+
+// ============================================================
+// DRAW SCREENS
+// ============================================================
+function drawStartScreen(time) {
+  // Background
+  drawCityBackground(0);
+
+  // Overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Title
+  titlePulse += 0.03;
+  const titleScale = 1 + Math.sin(titlePulse) * 0.05;
+  const titleY = H * 0.28;
+
+  ctx.save();
+  ctx.translate(W / 2, titleY);
+  ctx.scale(titleScale, titleScale);
+
+  // Title shadow
+  ctx.font = `bold ${Math.min(64, W / 7)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fillText('LOTI IT0', 3, 3);
+
+  // Title main
+  const titleGrad = ctx.createLinearGradient(-100, -30, 100, 30);
+  titleGrad.addColorStop(0, '#FFD700');
+  titleGrad.addColorStop(0.5, '#FF8C00');
+  titleGrad.addColorStop(1, '#FF4444');
+  ctx.fillStyle = titleGrad;
+  ctx.fillText('LOTI IT0', 0, 0);
+  ctx.strokeStyle = '#FFF';
+  ctx.lineWidth = 2;
+  ctx.strokeText('LOTI IT0', 0, 0);
+  ctx.restore();
+
+  // Subtitle
+  ctx.font = `bold ${Math.min(22, W / 18)}px sans-serif`;
+  ctx.fillStyle = '#FFF';
+  ctx.textAlign = 'center';
+  ctx.fillText('Draw before the timer runs out!', W / 2, titleY + 50);
+
+  // Instructions
+  const instrY = H * 0.5;
+  const lineH = 28;
+  ctx.font = `${Math.min(17, W / 24)}px sans-serif`;
+  ctx.fillStyle = '#DDD';
+  ctx.fillText('Pick colors and brushes to draw', W / 2, instrY);
+  ctx.fillText('Use stamps to decorate your city', W / 2, instrY + lineH);
+  ctx.fillText('Collect power-ups for bonuses', W / 2, instrY + lineH * 2);
+  ctx.fillText(`You have ${COUNTDOWN_TIME} seconds - GO!`, W / 2, instrY + lineH * 3);
+
+  // Tap to start
+  const alpha = 0.5 + Math.sin(time * 3) * 0.5;
+  ctx.globalAlpha = alpha;
+  ctx.font = `bold ${Math.min(28, W / 14)}px sans-serif`;
+  ctx.fillStyle = theme.primary;
+  ctx.fillText('TAP TO START', W / 2, H * 0.78);
+  ctx.globalAlpha = 1;
+
+  // Credits
+  ctx.font = `${Math.min(14, W / 30)}px sans-serif`;
+  ctx.fillStyle = '#999';
+  ctx.fillText('by Yoel', W / 2, H - 30);
+
+  drawMuteButton();
+}
+
+function drawHUD() {
+  // Timer - top left
+  const timerColor = timeLeft < 15 ? '#FF4444' : timeLeft < 30 ? '#FFD700' : '#FFF';
+  const min = Math.floor(timeLeft / 60);
+  const sec = Math.floor(timeLeft % 60);
+  const timerText = `${min}:${sec.toString().padStart(2, '0')}`;
+
+  ctx.font = `bold ${Math.min(30, W / 14)}px sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  const timerW = ctx.measureText(timerText).width + 20;
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.beginPath();
+  ctx.roundRect(6, 6, timerW, 34, 8);
+  ctx.fill();
+  ctx.fillStyle = timerColor;
+  ctx.fillText(timerText, 12, 10);
+
+  // Pulsing timer warning
+  if (timeLeft < 15) {
+    const pulse = Math.sin(Date.now() / 150) * 0.3;
+    ctx.globalAlpha = Math.max(0, pulse);
+    ctx.fillStyle = '#FF0000';
+    ctx.fillRect(0, 0, W, 4);
+    ctx.globalAlpha = 1;
+  }
+
+  // Score - top right with background pill
+  const scoreText = `Score: ${score}`;
+  ctx.font = `bold ${Math.min(24, W / 18)}px sans-serif`;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'top';
+  const scoreW = ctx.measureText(scoreText).width + 16;
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.beginPath();
+  ctx.roundRect(W - scoreW - 8, 6, scoreW + 4, 32, 8);
+  ctx.fill();
+  ctx.fillStyle = '#FFD700';
+  ctx.fillText(scoreText, W - 12, 12);
+
+  // Multiplier indicator
+  if (activePowerUp && activePowerUp.type === 'multiplier') {
+    ctx.font = 'bold 16px sans-serif';
+    ctx.fillStyle = '#FF69B4';
+    ctx.fillText('2X!', W - 12, 38);
+  }
+}
+
+function drawToolbarBackgrounds() {
+  if (gameState !== 'playing') return;
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+
+  // Find bounding boxes from actual button positions
+  // Color palette background
+  const colorBtns = Object.keys(buttons).filter(k => k.startsWith('color_') || k === 'eraser').map(k => buttons[k]);
+  if (colorBtns.length > 0) {
+    const minX = Math.min(...colorBtns.map(b => b.x)) - 6;
+    const minY = Math.min(...colorBtns.map(b => b.y)) - 6;
+    const maxX = Math.max(...colorBtns.map(b => b.x + b.w)) + 6;
+    const maxY = Math.max(...colorBtns.map(b => b.y + b.h)) + 6;
+    ctx.beginPath();
+    ctx.roundRect(minX, minY, maxX - minX, maxY - minY, 12);
+    ctx.fill();
+  }
+
+  // Brush size background
+  const brushBtns = Object.keys(buttons).filter(k => k.startsWith('brush_')).map(k => buttons[k]);
+  if (brushBtns.length > 0) {
+    const minX = Math.min(...brushBtns.map(b => b.x)) - 6;
+    const minY = Math.min(...brushBtns.map(b => b.y)) - 6;
+    const maxX = Math.max(...brushBtns.map(b => b.x + b.w)) + 6;
+    const maxY = Math.max(...brushBtns.map(b => b.y + b.h)) + 6;
+    ctx.beginPath();
+    ctx.roundRect(minX, minY, maxX - minX, maxY - minY, 10);
+    ctx.fill();
+  }
+
+  // Stamp panel background
+  const stampBtns = Object.keys(buttons).filter(k => k.startsWith('stamp_')).map(k => buttons[k]);
+  if (stampBtns.length > 0) {
+    const minX = Math.min(...stampBtns.map(b => b.x)) - 6;
+    const minY = Math.min(...stampBtns.map(b => b.y)) - 6;
+    const maxX = Math.max(...stampBtns.map(b => b.x + b.w)) + 6;
+    const maxY = Math.max(...stampBtns.map(b => b.y + b.h)) + 6;
+    ctx.beginPath();
+    ctx.roundRect(minX, minY, maxX - minX, maxY - minY, 10);
+    ctx.fill();
+  }
+
+  // Action buttons background
+  const actionBtns = ['undo', 'clear', 'save'].filter(k => buttons[k]).map(k => buttons[k]);
+  if (actionBtns.length > 0) {
+    const minX = Math.min(...actionBtns.map(b => b.x)) - 4;
+    const minY = Math.min(...actionBtns.map(b => b.y)) - 4;
+    const maxX = Math.max(...actionBtns.map(b => b.x + b.w)) + 4;
+    const maxY = Math.max(...actionBtns.map(b => b.y + b.h)) + 4;
+    ctx.beginPath();
+    ctx.roundRect(minX, minY, maxX - minX, maxY - minY, 10);
+    ctx.fill();
+  }
+}
+
+function drawPlayingScreen(time, dt) {
+  // City background
+  drawCityBackground(dt);
+
+  // Drawing layers
+  renderAllLayers();
+
+  // Power-up on canvas
+  drawPowerUpOnCanvas(time);
+
+  // Brush cursor indicator (when not touching)
+  if (!isDrawing && selectedStamp === -1) {
+    // Show small indicator at last known position - not needed for touch
+  }
+
+  // Draw toolbar backgrounds for visibility
+  drawToolbarBackgrounds();
+
+  // HUD
+  drawHUD();
+
+  // Active power-up indicator
+  drawActivePowerUpHUD();
+
+  // Buttons
+  for (const key in buttons) {
+    drawButton(key, buttons[key]);
+  }
+
+  // Mute
+  drawMuteButton();
+
+  // Particles & floating text
+  drawParticles();
+  drawFloatingTexts();
+}
+
+function drawTimesUpScreen(time) {
+  // Keep the drawing visible
+  drawCityBackground(0);
+  renderAllLayers();
+
+  // Overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Card
+  const cardW = Math.min(400, W * 0.85);
+  const cardH = 260;
+  const cardX = (W - cardW) / 2;
+  const cardY = H * 0.25;
+
+  ctx.fillStyle = theme.surface;
+  ctx.strokeStyle = theme.primary;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(cardX, cardY, cardW, cardH, 16);
+  ctx.fill();
+  ctx.stroke();
+
+  // Time's up text
+  ctx.font = `bold ${Math.min(38, W / 10)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#FF4444';
+  ctx.fillText("TIME'S UP!", W / 2, cardY + 45);
+
+  // Score
+  ctx.font = `bold ${Math.min(26, W / 16)}px sans-serif`;
+  ctx.fillStyle = theme.text;
+  ctx.fillText(`Final Score: ${score}`, W / 2, cardY + 95);
+
+  // Fun message
+  ctx.font = `${Math.min(18, W / 22)}px sans-serif`;
+  ctx.fillStyle = theme.text + 'BB';
+  const msg = score > 500 ? 'Amazing artwork!' : score > 200 ? 'Nice drawing!' : 'Keep creating!';
+  ctx.fillText(msg, W / 2, cardY + 130);
+
+  // Buttons
+  const btnW = 160;
+  const btnH = 50;
+  const btnY = cardY + 170;
+
+  // New Canvas button
+  ctx.fillStyle = theme.primary;
+  ctx.beginPath();
+  ctx.roundRect(W / 2 - btnW - 10, btnY, btnW, btnH, 10);
+  ctx.fill();
+  ctx.font = 'bold 18px sans-serif';
+  ctx.fillStyle = '#FFF';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('NEW CANVAS', W / 2 - btnW / 2 - 10, btnY + btnH / 2);
+
+  // Save button
+  ctx.fillStyle = '#44CC44';
+  ctx.beginPath();
+  ctx.roundRect(W / 2 + 10, btnY, btnW, btnH, 10);
+  ctx.fill();
+  ctx.fillStyle = '#FFF';
+  ctx.fillText('SAVE ART', W / 2 + btnW / 2 + 10, btnY + btnH / 2);
+
+  // Credits
+  ctx.font = '14px sans-serif';
+  ctx.fillStyle = '#999';
+  ctx.fillText('by Yoel', W / 2, cardY + cardH - 15);
+
+  drawMuteButton();
+  drawParticles();
+  drawFloatingTexts();
+}
+
+// ============================================================
+// MAIN GAME LOOP
+// ============================================================
+let lastTime = 0;
+let gameTime = 0;
+
+function gameLoop(timestamp) {
+  const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+  lastTime = timestamp;
+  gameTime += dt;
+
+  // Clear
+  ctx.clearRect(0, 0, W, H);
+
+  // Screen shake
+  updateShake(dt);
+  ctx.save();
+  ctx.translate(screenShake.x, screenShake.y);
+
+  if (gameState === 'start') {
+    drawStartScreen(gameTime);
+  } else if (gameState === 'playing') {
+    // Update timer
+    timeLeft -= dt;
+    totalDrawTime += dt;
+
+    // XP reporting
+    xpAccumulator += dt;
+    if (xpAccumulator >= 60) {
+      xpAccumulator -= 60;
+      reportXP();
+    }
+
+    // Score for time spent
+    if (Math.floor(totalDrawTime) > Math.floor(totalDrawTime - dt)) {
+      score += getScoreMultiplier();
+    }
+
+    // Power-up spawning
+    powerUpSpawnTimer -= dt;
+    if (powerUpSpawnTimer <= 0 && !powerUpOnCanvas) {
+      spawnPowerUp();
+      powerUpSpawnTimer = 20 + Math.random() * 10;
+    }
+
+    // Active power-up timer
+    if (activePowerUp) {
+      activePowerUp.timeLeft -= dt;
+      if (activePowerUp.timeLeft <= 0) {
+        activePowerUp = null;
+      }
+    }
+
+    // Check time
+    if (timeLeft <= 0) {
+      timeLeft = 0;
+      endDrawing();
+    }
+
+    // Update effects
+    updateParticles(dt);
+    updateFloatingTexts(dt);
+
+    drawPlayingScreen(gameTime, dt);
+  } else if (gameState === 'timesup') {
+    updateParticles(dt);
+    updateFloatingTexts(dt);
+    drawTimesUpScreen(gameTime);
+  }
+
+  ctx.restore();
+
+  requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+// HANDLE RESIZE
+// ============================================================
+window.addEventListener('resize', () => {
+  resize();
+  generateCity();
+  calcButtons();
+  // Recreate drawing layer at new size
+  if (currentLayerCanvas) {
+    const oldCanvas = currentLayerCanvas;
+    createNewLayer();
+    currentLayerCtx.drawImage(oldCanvas, 0, 0);
+  }
+  // Resize existing layers
+  for (let i = 0; i < drawingLayers.length; i++) {
+    const old = drawingLayers[i];
+    const newC = document.createElement('canvas');
+    newC.width = W;
+    newC.height = H;
+    newC.getContext('2d').drawImage(old, 0, 0);
+    drawingLayers[i] = newC;
+  }
+});
+
+// ============================================================
+// INIT
+// ============================================================
+generateCity();
+calcButtons();
+createNewLayer();
+requestAnimationFrame(gameLoop);
+
+</script>
+</body>
+</html>

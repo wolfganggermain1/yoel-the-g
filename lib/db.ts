@@ -118,6 +118,60 @@ function initializeDb(): void {
     "/games/remember-family/index.html",
     "adventure"
   );
+  insertGame.run(
+    "Pilot Tollt",
+    "pilot-tollt",
+    "Fly your jet over the city and pop the baddies with star blasts!",
+    yoelId,
+    "\u2708\uFE0F",
+    "/games/pilot-tollt/index.html",
+    "arcade"
+  );
+
+  insertGame.run(
+    "LOTI IT0",
+    "loti-it0",
+    "Draw before the timer runs out! Pick colors, stamps and brushes to create city art!",
+    yoelId,
+    "\uD83C\uDFA8",
+    "/games/loti-it0/index.html",
+    "creative"
+  );
+
+  insertGame.run(
+    "Cute Rescue",
+    "cute-rescue",
+    "Shoot magic at fantasy creatures and capture the Gold Bar to complete each level!",
+    yoelId,
+    "\u2728",
+    "/games/cute-rescue/index.html",
+    "arcade"
+  );
+
+  // ---- Seed Ezekiel's games ----
+  const ezekielDev = d.prepare("SELECT id FROM developers WHERE slug = 'ezekiel'").get() as { id: number } | undefined;
+  const ezekielId = ezekielDev?.id ?? 2;
+
+  insertGame.run(
+    "Zombie Road Blaster",
+    "loto",
+    "Blast fun zombies with water balloons, fly your car and use autopilot! (with Yo\u00EBl)",
+    ezekielId,
+    "\uD83D\uDE97",
+    "/games/loto/index.html",
+    "arcade"
+  );
+
+  // Also list under Yoël's games (same game file, different slug for DB uniqueness)
+  insertGame.run(
+    "Zombie Road Blaster",
+    "loto-yoel",
+    "Blast fun zombies with water balloons, fly your car and use autopilot! (with Ezekiel)",
+    yoelId,
+    "\uD83D\uDE97",
+    "/games/loto/index.html",
+    "arcade"
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -259,6 +313,42 @@ export function toggleGamePublished(id: number): Database.RunResult {
   return getDb()
     .prepare("UPDATE games SET published = CASE WHEN published = 1 THEN 0 ELSE 1 END WHERE id = ?")
     .run(id);
+}
+
+export interface UpdateGameData {
+  title?: string;
+  description?: string;
+  category?: string;
+  developer_id?: number;
+  thumbnail_emoji?: string;
+  game_path?: string;
+}
+
+export function updateGame(id: number, data: UpdateGameData): Database.RunResult {
+  const fields: string[] = [];
+  const values: (string | number)[] = [];
+
+  if (data.title !== undefined) { fields.push('title = ?'); values.push(data.title); }
+  if (data.description !== undefined) { fields.push('description = ?'); values.push(data.description); }
+  if (data.category !== undefined) { fields.push('category = ?'); values.push(data.category); }
+  if (data.developer_id !== undefined) { fields.push('developer_id = ?'); values.push(data.developer_id); }
+  if (data.thumbnail_emoji !== undefined) { fields.push('thumbnail_emoji = ?'); values.push(data.thumbnail_emoji); }
+  if (data.game_path !== undefined) { fields.push('game_path = ?'); values.push(data.game_path); }
+
+  if (fields.length === 0) {
+    return { changes: 0, lastInsertRowid: 0 } as Database.RunResult;
+  }
+
+  values.push(id);
+  return getDb()
+    .prepare(`UPDATE games SET ${fields.join(', ')} WHERE id = ?`)
+    .run(...values);
+}
+
+export function getGameById(id: number): Game | undefined {
+  return getDb()
+    .prepare("SELECT * FROM games WHERE id = ?")
+    .get(id) as Game | undefined;
 }
 
 export function incrementPlayCount(gameId: number): Database.RunResult {
