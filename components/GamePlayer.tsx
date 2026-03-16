@@ -47,6 +47,7 @@ function getPlayerId(): string {
 
 export default function GamePlayer({ game, gameSlug, authors }: GamePlayerProps) {
   const [xpNotifications, setXpNotifications] = useState<{ id: number; amount: number }[]>([]);
+  const [showInfo, setShowInfo] = useState(true);
   const notifIdRef = useRef(0);
 
   // Tracking refs (not state, to avoid re-renders)
@@ -110,6 +111,9 @@ export default function GamePlayer({ game, gameSlug, authors }: GamePlayerProps)
 
     playerIdRef.current = getPlayerId();
 
+    // Auto-hide info overlay after 3 seconds
+    const infoTimer = setTimeout(() => setShowInfo(false), 3000);
+
     // Increment play count on mount
     fetch('/api/games', {
       method: 'POST',
@@ -155,6 +159,7 @@ export default function GamePlayer({ game, gameSlug, authors }: GamePlayerProps)
 
     // --- Cleanup on unmount ---
     return () => {
+      clearTimeout(infoTimer);
       if (timerRef.current) clearInterval(timerRef.current);
       if (intervalRef.current) clearInterval(intervalRef.current);
       document.removeEventListener('visibilitychange', handleVisibility);
@@ -208,25 +213,22 @@ export default function GamePlayer({ game, gameSlug, authors }: GamePlayerProps)
         </svg>
       </Link>
 
-      {/* Game Info & Credits Overlay */}
+      {/* Game Info & Credits Overlay — auto-hides after 3s */}
       {authors && authors.length > 0 && (
-        <div className="
-          fixed bottom-4 left-4 z-[60]
-          px-3 py-2
-          rounded-xl
-          bg-black/50 backdrop-blur-sm
-          text-white text-xs sm:text-sm
-          shadow-lg
-          pointer-events-none
-          max-w-[200px]
-        ">
-          <div className="font-fredoka font-bold text-sm mb-1">{game.title}</div>
-          <div className="opacity-80">
-            Made by {authors.map(a => `${a.developer_emoji} ${a.developer_name}`).join(' & ')}
+        <div
+          className="fixed bottom-4 left-4 z-[60] pointer-events-none transition-opacity duration-700"
+          style={{ opacity: showInfo ? 1 : 0 }}
+        >
+          <div className="
+            px-2.5 py-1.5 rounded-lg
+            bg-black/40 backdrop-blur-sm
+            text-white text-xs
+            shadow-md
+            flex items-center gap-1.5
+          ">
+            <span>{authors[0].developer_emoji}</span>
+            <span className="font-fredoka font-semibold">{game.title}</span>
           </div>
-          {game.player_count && (
-            <div className="opacity-60 mt-0.5">{game.player_count} · {game.controls || 'Mouse / Touch'}</div>
-          )}
         </div>
       )}
 
