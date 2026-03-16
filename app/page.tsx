@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { getApprovedDevelopers, getGamesByDeveloper, getDevelopersForGame } from '@/lib/db';
 import GameCard from '@/components/GameCard';
 import GameCreator from '@/components/GameCreator';
