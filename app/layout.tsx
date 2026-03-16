@@ -12,7 +12,7 @@ const fredoka = Fredoka({
 });
 
 export const metadata: Metadata = {
-  title: "Yoel The G - Family Gaming Platform",
+  title: "YTG - Family Gaming Platform",
   description:
     "A fun, colorful family gaming platform for kids ages 3+. Play games, earn XP, and level up!",
   manifest: "/manifest.json",
