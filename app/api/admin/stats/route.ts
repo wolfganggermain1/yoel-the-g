@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { isAdminAuthenticated } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 import { getStats, getDb } from '@/lib/db';
 
 interface RecentSession {
@@ -18,12 +18,13 @@ interface RecentSession {
  * Return platform statistics and recent play sessions.
  */
 export async function GET() {
-  const authed = await isAdminAuthenticated();
-  if (!authed) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const stats = getStats();
+  const totalUsers = (getDb().prepare("SELECT COUNT(*) as c FROM users").get() as { c: number }).c;
 
   // Fetch last 5 play sessions with game info
   const recentSessions = getDb()
@@ -36,5 +37,5 @@ export async function GET() {
     )
     .all() as RecentSession[];
 
-  return NextResponse.json({ stats, recentSessions });
+  return NextResponse.json({ stats: { ...stats, totalUsers }, recentSessions });
 }

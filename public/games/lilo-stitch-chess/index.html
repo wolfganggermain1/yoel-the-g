@@ -1,0 +1,1709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Lilo & Stitch Chess - by Areli</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; background: #1a0a2e; touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+canvas { display: block; width: 100vw; height: 100vh; height: 100dvh; }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+<script>
+// chess.js v0.13.4 - embedded for offline use
+var SYMBOLS="pnbrqkPNBRQK",DEFAULT_POSITION="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",TERMINATION_MARKERS=["1-0","0-1","1/2-1/2","*"],PAWN_OFFSETS={b:[16,32,17,15],w:[-16,-32,-17,-15]},PIECE_OFFSETS={n:[-18,-33,-31,-14,18,33,31,14],b:[-17,-15,17,15],r:[-16,1,16,-1],q:[-17,-16,-15,1,17,16,15,-1],k:[-17,-16,-15,1,17,16,15,-1]},ATTACKS=[20,0,0,0,0,0,0,24,0,0,0,0,0,0,20,0,0,20,0,0,0,0,0,24,0,0,0,0,0,20,0,0,0,0,20,0,0,0,0,24,0,0,0,0,20,0,0,0,0,0,0,20,0,0,0,24,0,0,0,20,0,0,0,0,0,0,0,0,20,0,0,24,0,0,20,0,0,0,0,0,0,0,0,0,0,20,2,24,2,20,0,0,0,0,0,0,0,0,0,0,0,2,53,56,53,2,0,0,0,0,0,0,24,24,24,24,24,24,56,0,56,24,24,24,24,24,24,0,0,0,0,0,0,2,53,56,53,2,0,0,0,0,0,0,0,0,0,0,0,20,2,24,2,20,0,0,0,0,0,0,0,0,0,0,20,0,0,24,0,0,20,0,0,0,0,0,0,0,0,20,0,0,0,24,0,0,0,20,0,0,0,0,0,0,20,0,0,0,0,24,0,0,0,0,20,0,0,0,0,20,0,0,0,0,0,24,0,0,0,0,0,20,0,0,20,0,0,0,0,0,0,24,0,0,0,0,0,0,20],RAYS=[17,0,0,0,0,0,0,16,0,0,0,0,0,0,15,0,0,17,0,0,0,0,0,16,0,0,0,0,0,15,0,0,0,0,17,0,0,0,0,16,0,0,0,0,15,0,0,0,0,0,0,17,0,0,0,16,0,0,0,15,0,0,0,0,0,0,0,0,17,0,0,16,0,0,15,0,0,0,0,0,0,0,0,0,0,17,0,16,0,15,0,0,0,0,0,0,0,0,0,0,0,0,17,16,15,0,0,0,0,0,0,0,1,1,1,1,1,1,1,0,-1,-1,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,-15,-16,-17,0,0,0,0,0,0,0,0,0,0,0,0,-15,0,-16,0,-17,0,0,0,0,0,0,0,0,0,0,-15,0,0,-16,0,0,-17,0,0,0,0,0,0,0,0,-15,0,0,0,-16,0,0,0,-17,0,0,0,0,0,0,-15,0,0,0,0,-16,0,0,0,0,-17,0,0,0,0,-15,0,0,0,0,0,-16,0,0,0,0,0,-17,0,0,-15,0,0,0,0,0,0,-16,0,0,0,0,0,0,-17],SHIFTS={p:0,n:1,b:2,r:3,q:4,k:5},BITS={NORMAL:1,CAPTURE:2,BIG_PAWN:4,EP_CAPTURE:8,PROMOTION:16,KSIDE_CASTLE:32,QSIDE_CASTLE:64},RANK_1=7,RANK_2=6,RANK_3=5,RANK_4=4,RANK_5=3,RANK_6=2,RANK_7=1,RANK_8=0,SQUARE_MAP={a8:0,b8:1,c8:2,d8:3,e8:4,f8:5,g8:6,h8:7,a7:16,b7:17,c7:18,d7:19,e7:20,f7:21,g7:22,h7:23,a6:32,b6:33,c6:34,d6:35,e6:36,f6:37,g6:38,h6:39,a5:48,b5:49,c5:50,d5:51,e5:52,f5:53,g5:54,h5:55,a4:64,b4:65,c4:66,d4:67,e4:68,f4:69,g4:70,h4:71,a3:80,b3:81,c3:82,d3:83,e3:84,f3:85,g3:86,h3:87,a2:96,b2:97,c2:98,d2:99,e2:100,f2:101,g2:102,h2:103,a1:112,b1:113,c1:114,d1:115,e1:116,f1:117,g1:118,h1:119},ROOKS={w:[{square:SQUARE_MAP.a1,flag:BITS.QSIDE_CASTLE},{square:SQUARE_MAP.h1,flag:BITS.KSIDE_CASTLE}],b:[{square:SQUARE_MAP.a8,flag:BITS.QSIDE_CASTLE},{square:SQUARE_MAP.h8,flag:BITS.KSIDE_CASTLE}]},PARSER_STRICT=0,PARSER_SLOPPY=1;function get_disambiguator(e,r){for(var n=e.from,t=e.to,o=e.piece,i=0,a=0,l=0,f=0,u=r.length;f<u;f++){var c=r[f].from,s=r[f].to;o===r[f].piece&&n!==c&&t===s&&(i++,rank(n)===rank(c)&&a++,file(n)===file(c)&&l++)}return 0<i?0<a&&0<l?algebraic(n):0<l?algebraic(n).charAt(1):algebraic(n).charAt(0):""}function infer_piece_type(e){var r=e.charAt(0);return"a"<=r&&r<="h"?e.match(/[a-h]\d.*[a-h]\d/)?void 0:PAWN:"o"===(r=r.toLowerCase())?KING:r}function stripped_san(e){return e.replace(/=/,"").replace(/[+#]?[?!]*$/,"")}function rank(e){return e>>4}function file(e){return 15&e}function algebraic(e){var r=file(e),e=rank(e);return"abcdefgh".substring(r,r+1)+"87654321".substring(e,e+1)}function swap_color(e){return e===WHITE?BLACK:WHITE}function is_digit(e){return-1!=="0123456789".indexOf(e)}function clone(e){var r,n=e instanceof Array?[]:{};for(r in e)n[r]="object"==typeof r?clone(e[r]):e[r];return n}function trim(e){return e.replace(/^\s+|\s+$/g,"")}var BLACK="b",WHITE="w",EMPTY=-1,PAWN="p",KNIGHT="n",BISHOP="b",ROOK="r",QUEEN="q",KING="k",SQUARES=function(){for(var e=[],r=SQUARE_MAP.a8;r<=SQUARE_MAP.h1;r++)136&r?r+=7:e.push(algebraic(r));return e}(),FLAGS={NORMAL:"n",CAPTURE:"c",BIG_PAWN:"b",EP_CAPTURE:"e",PROMOTION:"p",KSIDE_CASTLE:"k",QSIDE_CASTLE:"q"},Chess=function(e){var I=new Array(128),P={w:EMPTY,b:EMPTY},v=WHITE,R={w:0,b:0},d=EMPTY,f=0,A=1,E=[],T={},h={};function u(e){void 0===e&&(e=!1),I=new Array(128),P={w:EMPTY,b:EMPTY},v=WHITE,R={w:0,b:0},d=EMPTY,f=0,A=1,E=[],e||(T={}),h={},s(O())}function r(){function e(e){e in h&&(n[e]=h[e])}for(var r=[],n={};0<E.length;)r.push(y());for(e(O());0<r.length;)L(r.pop()),e(O());h=n}function b(){m(DEFAULT_POSITION)}function m(e,r){void 0===r&&(r=!1);var n=e.split(/\s+/),t=n[0],o=0;if(!c(e).valid)return!1;u(r);for(var i=0;i<t.length;i++){var a,l=t.charAt(i);"/"===l?o+=8:is_digit(l)?o+=parseInt(l,10):(a=l<"a"?WHITE:BLACK,p({type:l.toLowerCase(),color:a},algebraic(o)),o++)}return v=n[1],-1<n[2].indexOf("K")&&(R.w|=BITS.KSIDE_CASTLE),-1<n[2].indexOf("Q")&&(R.w|=BITS.QSIDE_CASTLE),-1<n[2].indexOf("k")&&(R.b|=BITS.KSIDE_CASTLE),-1<n[2].indexOf("q")&&(R.b|=BITS.QSIDE_CASTLE),d="-"===n[3]?EMPTY:SQUARE_MAP[n[3]],f=parseInt(n[4],10),A=parseInt(n[5],10),s(O()),!0}function c(e){var r="No errors.",n="FEN string must contain six space-delimited fields.",t="6th field (move number) must be a positive integer.",o="5th field (half move counter) must be a non-negative integer.",i="4th field (en-passant square) is invalid.",a="3rd field (castling availability) is invalid.",l="2nd field (side to move) is invalid.",f="1st field (piece positions) does not contain 8 '/'-delimited rows.",u="1st field (piece positions) is invalid [consecutive numbers].",c="1st field (piece positions) is invalid [invalid piece].",s="1st field (piece positions) is invalid [row too large].",p="Illegal en-passant square",e=e.split(/\s+/);if(6!==e.length)return{valid:!1,error_number:1,error:n};if(isNaN(parseInt(e[5]))||parseInt(e[5],10)<=0)return{valid:!1,error_number:2,error:t};if(isNaN(parseInt(e[4]))||parseInt(e[4],10)<0)return{valid:!1,error_number:3,error:o};if(!/^(-|[abcdefgh][36])$/.test(e[3]))return{valid:!1,error_number:4,error:i};if(!/^(KQ?k?q?|Qk?q?|kq?|q|-)$/.test(e[2]))return{valid:!1,error_number:5,error:a};if(!/^(w|b)$/.test(e[1]))return{valid:!1,error_number:6,error:l};var S=e[0].split("/");if(8!==S.length)return{valid:!1,error_number:7,error:f};for(var A=0;A<S.length;A++){for(var E=0,g=!1,_=0;_<S[A].length;_++)if(isNaN(S[A][_])){if(!/^[prnbqkPRNBQK]$/.test(S[A][_]))return{valid:!1,error_number:9,error:c};E+=1,g=!1}else{if(g)return{valid:!1,error_number:8,error:u};E+=parseInt(S[A][_],10),g=!0}if(8!==E)return{valid:!1,error_number:10,error:s}}return"3"==e[3][1]&&"w"==e[1]||"6"==e[3][1]&&"b"==e[1]?{valid:!1,error_number:11,error:p}:{valid:!0,error_number:0,error:r}}function O(){for(var e,r,n=0,t="",o=SQUARE_MAP.a8;o<=SQUARE_MAP.h1;o++)null==I[o]?n++:(0<n&&(t+=n,n=0),e=I[o].color,r=I[o].type,t+=e===WHITE?r.toUpperCase():r.toLowerCase()),o+1&136&&(0<n&&(t+=n),o!==SQUARE_MAP.h1&&(t+="/"),n=0,o+=8);var i="",a=(R[WHITE]&BITS.KSIDE_CASTLE&&(i+="K"),R[WHITE]&BITS.QSIDE_CASTLE&&(i+="Q"),R[BLACK]&BITS.KSIDE_CASTLE&&(i+="k"),R[BLACK]&BITS.QSIDE_CASTLE&&(i+="q"),i=i||"-",d===EMPTY?"-":algebraic(d));return[t,v,i,a,f,A].join(" ")}function N(e){for(var r=0;r<e.length;r+=2)"string"==typeof e[r]&&"string"==typeof e[r+1]&&(T[e[r]]=e[r+1]);return T}function s(e){0<E.length||(e!==DEFAULT_POSITION?(T.SetUp="1",T.FEN=e):(delete T.SetUp,delete T.FEN))}function n(e){e=I[SQUARE_MAP[e]];return e?{type:e.type,color:e.color}:null}function p(e,r){if(!("type"in e&&"color"in e))return!1;if(-1===SYMBOLS.indexOf(e.type.toLowerCase()))return!1;if(!(r in SQUARE_MAP))return!1;r=SQUARE_MAP[r];return(e.type!=KING||P[e.color]==EMPTY||P[e.color]==r)&&(I[r]={type:e.type,color:e.color},e.type===KING&&(P[e.color]=r),s(O()),!0)}function C(e,r,n,t,o){r={color:v,from:r,to:n,flags:t,piece:e[r].type};return o&&(r.flags|=BITS.PROMOTION,r.promotion=o),e[n]?r.captured=e[n].type:t&BITS.EP_CAPTURE&&(r.captured=PAWN),r}function g(e){function r(e,r,n,t,o){if(e[n].type!==PAWN||rank(t)!==RANK_8&&rank(t)!==RANK_1)r.push(C(e,n,t,o));else for(var i=[QUEEN,ROOK,BISHOP,KNIGHT],a=0,l=i.length;a<l;a++)r.push(C(e,n,t,o,i[a]))}var n=[],t=v,o=swap_color(t),i={b:RANK_7,w:RANK_2},a=SQUARE_MAP.a8,l=SQUARE_MAP.h1,f=!1,u=!(void 0!==e&&"legal"in e)||e.legal,c=!(void 0!==e&&"piece"in e&&"string"==typeof e.piece)||e.piece.toLowerCase();if(void 0!==e&&"square"in e){if(!(e.square in SQUARE_MAP))return[];a=l=SQUARE_MAP[e.square],f=!0}for(var s,p,S=a;S<=l;S++)if(136&S)S+=7;else{var A=I[S];if(null!=A&&A.color===t)if(A.type!==PAWN||!0!==c&&c!==PAWN){if(!0===c||c===A.type)for(var E=0,g=PIECE_OFFSETS[A.type].length;E<g;E++)for(var _=PIECE_OFFSETS[A.type][E],T=S;;){if(136&(T+=_))break;if(null!=I[T]){if(I[T].color===t)break;r(I,n,S,T,BITS.CAPTURE);break}if(r(I,n,S,T,BITS.NORMAL),"n"===A.type||"k"===A.type)break}}else{var T=S+PAWN_OFFSETS[t][0];for(null==I[T]&&(r(I,n,S,T,BITS.NORMAL),T=S+PAWN_OFFSETS[t][1],i[t]===rank(S)&&null==I[T]&&r(I,n,S,T,BITS.BIG_PAWN)),E=2;E<4;E++)136&(T=S+PAWN_OFFSETS[t][E])||(null!=I[T]&&I[T].color===o?r(I,n,S,T,BITS.CAPTURE):T===d&&r(I,n,S,d,BITS.EP_CAPTURE))}}if(!0!==c&&c!==KING||f&&l!==P[t]||(R[t]&BITS.KSIDE_CASTLE&&(p=(s=P[t])+2,null!=I[s+1]||null!=I[p]||B(o,P[t])||B(o,s+1)||B(o,p)||r(I,n,P[t],p,BITS.KSIDE_CASTLE)),R[t]&BITS.QSIDE_CASTLE&&(p=(s=P[t])-2,null!=I[s-1]||null!=I[s-2]||null!=I[s-3]||B(o,P[t])||B(o,s-1)||B(o,p)||r(I,n,P[t],p,BITS.QSIDE_CASTLE))),!u)return n;for(var h=[],S=0,g=n.length;S<g;S++)L(n[S]),K(t)||h.push(n[S]),y();return h}function _(e,r){var n="";return e.flags&BITS.KSIDE_CASTLE?n="O-O":e.flags&BITS.QSIDE_CASTLE?n="O-O-O":(e.piece!==PAWN&&(r=get_disambiguator(e,r),n+=e.piece.toUpperCase()+r),e.flags&(BITS.CAPTURE|BITS.EP_CAPTURE)&&(e.piece===PAWN&&(n+=algebraic(e.from)[0]),n+="x"),n+=algebraic(e.to),e.flags&BITS.PROMOTION&&(n+="="+e.promotion.toUpperCase())),L(e),t()&&(o()?n+="#":n+="+"),y(),n}function B(e,r){for(var n=SQUARE_MAP.a8;n<=SQUARE_MAP.h1;n++)if(136&n)n+=7;else if(null!=I[n]&&I[n].color===e){var t=I[n],o=n-r,i=119+o;if(ATTACKS[i]&1<<SHIFTS[t.type])if(t.type===PAWN){if(0<o){if(t.color===WHITE)return!0}else if(t.color===BLACK)return!0}else{if("n"===t.type||"k"===t.type)return!0;for(var a=RAYS[i],l=n+a,f=!1;l!==r;){if(null!=I[l]){f=!0;break}l+=a}if(!f)return!0}}return!1}function K(e){return B(swap_color(e),P[e])}function t(){return K(v)}function o(){return t()&&0===g().length}function i(){return!t()&&0===g().length}function a(){for(var e={},r=[],n=0,t=0,o=SQUARE_MAP.a8;o<=SQUARE_MAP.h1;o++){var i,t=(t+1)%2;136&o?o+=7:(i=I[o])&&(e[i.type]=i.type in e?e[i.type]+1:1,i.type===BISHOP&&r.push(t),n++)}if(2===n)return!0;if(3===n&&(1===e[BISHOP]||1===e[KNIGHT]))return!0;if(n===e[BISHOP]+2){for(var a=0,l=r.length,o=0;o<l;o++)a+=r[o];if(0===a||a===l)return!0}return!1}function l(){for(var e=[],r={},n=!1;;){var t=y();if(!t)break;e.push(t)}for(;;){var o=O().split(" ").slice(0,4).join(" ");if(r[o]=o in r?r[o]+1:1,3<=r[o]&&(n=!0),!e.length)break;L(e.pop())}return n}function L(e){var r,n,t=v,o=swap_color(t);if(E.push({move:e,kings:{b:P.b,w:P.w},turn:v,castling:{b:R.b,w:R.w},ep_square:d,half_moves:f,move_number:A}),I[e.to]=I[e.from],I[e.from]=null,e.flags&BITS.EP_CAPTURE&&(v===BLACK?I[e.to-16]=null:I[e.to+16]=null),e.flags&BITS.PROMOTION&&(I[e.to]={type:e.promotion,color:t}),I[e.to].type===KING&&(P[I[e.to].color]=e.to,e.flags&BITS.KSIDE_CASTLE?(r=e.to-1,n=e.to+1,I[r]=I[n],I[n]=null):e.flags&BITS.QSIDE_CASTLE&&(r=e.to+1,n=e.to-2,I[r]=I[n],I[n]=null),R[t]=""),R[t])for(var i=0,a=ROOKS[t].length;i<a;i++)if(e.from===ROOKS[t][i].square&&R[t]&ROOKS[t][i].flag){R[t]^=ROOKS[t][i].flag;break}if(R[o])for(i=0,a=ROOKS[o].length;i<a;i++)if(e.to===ROOKS[o][i].square&&R[o]&ROOKS[o][i].flag){R[o]^=ROOKS[o][i].flag;break}d=e.flags&BITS.BIG_PAWN?"b"===v?e.to-16:e.to+16:EMPTY,e.piece===PAWN||e.flags&(BITS.CAPTURE|BITS.EP_CAPTURE)?f=0:f++,v===BLACK&&A++,v=swap_color(v)}function y(){var e=E.pop();if(null==e)return null;var r,n,t=e.move,e=(P=e.kings,v=e.turn,R=e.castling,d=e.ep_square,f=e.half_moves,A=e.move_number,v),o=swap_color(v);return I[t.from]=I[t.to],I[t.from].type=t.piece,I[t.to]=null,t.flags&BITS.CAPTURE?I[t.to]={type:t.captured,color:o}:t.flags&BITS.EP_CAPTURE&&(e=e===BLACK?t.to-16:t.to+16,I[e]={type:PAWN,color:o}),t.flags&(BITS.KSIDE_CASTLE|BITS.QSIDE_CASTLE)&&(t.flags&BITS.KSIDE_CASTLE?(r=t.to+1,n=t.to-1):t.flags&BITS.QSIDE_CASTLE&&(r=t.to-2,n=t.to+1),I[r]=I[n],I[n]=null),t}function U(e,r){for(var n=stripped_san(e),t=0;t<2;t++){if(t==PARSER_SLOPPY){if(!r)return null;var o,i,a,l,f=!1,u=n.match(/([pnbrqkPNBRQK])?([a-h][1-8])x?-?([a-h][1-8])([qrbnQRBN])?/);(u=u||n.match(/([pnbrqkPNBRQK])?([a-h]?[1-8]?)x?-?([a-h][1-8])([qrbnQRBN])?/))&&(o=u[1],i=u[2],a=u[3],l=u[4],1==i.length&&(f=!0))}for(var c=infer_piece_type(n),s=g({legal:!0,piece:o||c}),p=0,S=s.length;p<S;p++)switch(t){case PARSER_STRICT:if(n===stripped_san(_(s[p],s)))return s[p];break;case PARSER_SLOPPY:if(u){if(!(o&&o.toLowerCase()!=s[p].piece||SQUARE_MAP[i]!=s[p].from||SQUARE_MAP[a]!=s[p].to||l&&l.toLowerCase()!=s[p].promotion))return s[p];if(f){var A=algebraic(s[p].from);if(!(o&&o.toLowerCase()!=s[p].piece||SQUARE_MAP[a]!=s[p].to||i!=A[0]&&i!=A[1]||l&&l.toLowerCase()!=s[p].promotion))return s[p]}}}}return null}function S(e){var r,n=clone(e),t=(n.san=_(n,g({legal:!0})),n.to=algebraic(n.to),n.from=algebraic(n.from),"");for(r in BITS)BITS[r]&n.flags&&(t+=FLAGS[r]);return n.flags=t,n}return m(void 0===e?DEFAULT_POSITION:e),{load:function(e){return m(e)},reset:b,moves:function(e){for(var r=g(e),n=[],t=0,o=r.length;t<o;t++)void 0!==e&&"verbose"in e&&e.verbose?n.push(S(r[t])):n.push(_(r[t],g({legal:!0})));return n},in_check:t,in_checkmate:o,in_stalemate:i,in_draw:function(){return 100<=f||i()||a()||l()},insufficient_material:a,in_threefold_repetition:l,game_over:function(){return 100<=f||o()||i()||a()||l()},validate_fen:c,fen:O,board:function(){for(var e=[],r=[],n=SQUARE_MAP.a8;n<=SQUARE_MAP.h1;n++)null==I[n]?r.push(null):r.push({square:algebraic(n),type:I[n].type,color:I[n].color}),n+1&136&&(e.push(r),r=[],n+=8);return e},pgn:function(e){var t="object"==typeof e&&"string"==typeof e.newline_char?e.newline_char:"\n",o="object"==typeof e&&"number"==typeof e.max_width?e.max_width:0,i=[],r=!1;for(S in T)i.push("["+S+' "'+T[S]+'"]'+t),r=!0;r&&E.length&&i.push(t);function n(e){var r=h[O()];return e=void 0!==r?e+(0<e.length?" ":"")+("{"+r+"}"):e}for(var a=[];0<E.length;)a.push(y());var l=[],f="";for(0===a.length&&l.push(n(""));0<a.length;){f=n(f);var u,c=a.pop();E.length||"b"!==c.color?"w"===c.color&&(f.length&&l.push(f),f=A+"."):(u=A+". ...",f=f?f+" "+u:u),f=f+" "+_(c,g({legal:!0})),L(c)}if(f.length&&l.push(n(f)),void 0!==T.Result&&l.push(T.Result),0===o)return i.join("")+l.join(" ");for(var s=function(){return 0<i.length&&" "===i[i.length-1]&&(i.pop(),!0)},p=0,S=0;S<l.length;S++)p+l[S].length>o&&l[S].includes("{")?p=function(e,r){for(var n of r.split(" "))if(n){if(e+n.length>o){for(;s();)e--;i.push(t),e=0}i.push(n),e+=n.length,i.push(" "),e++}return s()&&e--,e}(p,l[S]):(p+l[S].length>o&&0!==S?(" "===i[i.length-1]&&i.pop(),i.push(t),p=0):0!==S&&(i.push(" "),p++),i.push(l[S]),p+=l[S].length);return i.join("")},load_pgn:function(e,r){var n=void 0!==r&&"sloppy"in r&&r.sloppy;function l(e){return e.replace(/\\/g,"\\")}e=e.trim();var t,o="object"==typeof r&&"string"==typeof r.newline_char?r.newline_char:"\r?\n",i=new RegExp("^(\\[((?:"+l(o)+")|.)*\\])(?:\\s*"+l(o)+"){2}"),i=i.test(e)?i.exec(e)[1]:"",a=(b(),function(e,r){for(var r="object"==typeof r&&"string"==typeof r.newline_char?r.newline_char:"\r?\n",n={},t=e.split(new RegExp(l(r))),o=0;o<t.length;o++){var i=/^\s*\[([A-Za-z]+)\s*"(.*)"\s*\]\s*$/,a=t[o].replace(i,"$1"),i=t[o].replace(i,"$2");0<trim(a).length&&(n[a]=i)}return n}(i,r)),f="";for(t in a)"fen"===t.toLowerCase()&&(f=a[t]),N([t,a[t]]);if(n){if(f&&!m(f,!0))return!1}else if("1"===a.SetUp&&!("FEN"in a&&m(a.FEN,!0)))return!1;function u(e){return e=e.replace(new RegExp(l(o),"g")," "),"{"+c(e.slice(1,e.length-1))+"}"}for(var c=function(e){return Array.from(e).map(function(e){return e.charCodeAt(0)<128?e.charCodeAt(0).toString(16):encodeURIComponent(e).replace(/\%/g,"").toLowerCase()}).join("")},s=function(e){return 0==e.length?"":decodeURIComponent("%"+e.match(/.{1,2}/g).join("%"))},p=e.replace(i,"").replace(new RegExp("({[^}]*})+?|;([^"+l(o)+"]*)","g"),function(e,r,n){return void 0!==r?u(r):" "+u("{"+n.slice(1)+"}")}).replace(new RegExp(l(o),"g")," "),S=/(\([^\(\)]+\))+?/g;S.test(p);)p=p.replace(S,"");for(var A=(A=trim(p=(p=(p=p.replace(/\d+\.(\.\.)?/g,"")).replace(/\.\.\./g,"")).replace(/\$\d+/g,"")).split(new RegExp(/\s+/))).join(",").replace(/,,+/g,",").split(","),E="",g=0;g<A.length;g++){var _=function(e){if(e.startsWith("{")&&e.endsWith("}"))return s(e.slice(1,e.length-1))}(A[g]);if(void 0!==_)h[O()]=_;else if(null==(_=U(A[g],n))){if(!(-1<TERMINATION_MARKERS.indexOf(A[g])))return!1;E=A[g]}else E="",L(_)}return E&&Object.keys(T).length&&!T.Result&&N(["Result",E]),!0},header:function(){return N(arguments)},turn:function(){return v},move:function(e,r){var r=void 0!==r&&"sloppy"in r&&r.sloppy,n=null;if("string"==typeof e)n=U(e,r);else if("object"==typeof e)for(var t=g(),o=0,i=t.length;o<i;o++)if(!(e.from!==algebraic(t[o].from)||e.to!==algebraic(t[o].to)||"promotion"in t[o]&&e.promotion!==t[o].promotion)){n=t[o];break}if(!n)return null;r=S(n);return L(n),r},undo:function(){var e=y();return e?S(e):null},clear:function(){return u()},put:p,get:n,ascii(){for(var e,r="   +------------------------+\n",n=SQUARE_MAP.a8;n<=SQUARE_MAP.h1;n++)0===file(n)&&(r+=" "+"87654321"[rank(n)]+" |"),null==I[n]?r+=" . ":(e=I[n].type,r+=" "+(I[n].color===WHITE?e.toUpperCase():e.toLowerCase())+" "),n+1&136&&(r+="|\n",n+=8);return r=r+"   +------------------------+\n"+"     a  b  c  d  e  f  g  h"},remove:function(e){return r=n(e=e),I[SQUARE_MAP[e]]=null,r&&r.type===KING&&(P[r.color]=EMPTY),s(O()),r;var r},perft:function e(r){for(var n=g({legal:!1}),t=0,o=v,i=0,a=n.length;i<a;i++)L(n[i]),K(o)||(0<r-1?t+=e(r-1):t++),y();return t},square_color:function(e){return e in SQUARE_MAP?(rank(e=SQUARE_MAP[e])+file(e))%2==0?"light":"dark":null},history:function(e){for(var r=[],n=[],t=(void 0!==e&&"verbose"in e&&e.verbose);0<E.length;)r.push(y());for(;0<r.length;){var o=r.pop();t?n.push(S(o)):n.push(_(o,g({legal:!0}))),L(o)}return n},get_comment:function(){return h[O()]},set_comment:function(e){h[O()]=e.replace("{","[").replace("}","]")},delete_comment:function(){var e=h[O()];return delete h[O()],e},get_comments:function(){return r(),Object.keys(h).map(function(e){return{fen:e,comment:h[e]}})},delete_comments:function(){return r(),Object.keys(h).map(function(e){var r=h[e];return delete h[e],{fen:e,comment:r}})}}};
+</script>
+<script>
+// ============================================================
+// PLATFORM THEME INTEGRATION
+// ============================================================
+let platformTheme = 'blue-light';
+try { platformTheme = window.parent.document.documentElement.getAttribute('data-theme') || 'blue-light'; } catch(e) {}
+const THEMES = {
+  'blue-light':  { primary: '#3b82f6', dark: '#1e40af', bg: '#f0f7ff', surface: '#ffffff', text: '#1e293b', accent: '#93c5fd', glow: 'rgba(59,130,246,0.4)' },
+  'blue-dark':   { primary: '#60a5fa', dark: '#2563eb', bg: '#0f172a', surface: '#1e293b', text: '#e2e8f0', accent: '#1e3a5f', glow: 'rgba(96,165,250,0.3)' },
+  'red-light':   { primary: '#ef4444', dark: '#991b1b', bg: '#fff5f5', surface: '#ffffff', text: '#1e293b', accent: '#fca5a5', glow: 'rgba(239,68,68,0.4)' },
+  'red-dark':    { primary: '#f87171', dark: '#dc2626', bg: '#1a0a0a', surface: '#2d1515', text: '#fecaca', accent: '#4a1515', glow: 'rgba(248,113,113,0.3)' },
+};
+const theme = THEMES[platformTheme] || THEMES['blue-light'];
+
+// XP Reporting
+let xpTimer = 0;
+function reportXP() { try { window.parent.postMessage({ type: 'xp', amount: 10 }, '*'); } catch(e) {} }
+function onGameOver(finalScore) { try { window.parent.postMessage({ type: 'gameOver', score: finalScore }, '*'); } catch(e) {} }
+
+// ============================================================
+// CANVAS SETUP
+// ============================================================
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let W, H, sqSize, boardX, boardY, boardSize;
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  // Board sizing - leave room for UI above and below
+  let topMargin = W > H ? 40 : 90;
+  let bottomMargin = W > H ? 50 : 120;
+  let sideMargin = W > H ? 8 : 16;
+  let availW = W - sideMargin * 2;
+  let availH = H - topMargin - bottomMargin;
+  boardSize = Math.min(availW, availH);
+  boardSize = Math.min(boardSize, 600); // cap for large screens
+  sqSize = Math.floor(boardSize / 8);
+  boardSize = sqSize * 8;
+  boardX = Math.floor((W - boardSize) / 2);
+  boardY = topMargin + Math.floor((availH - boardSize) / 2);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ============================================================
+// AUDIO ENGINE
+// ============================================================
+let audioCtx = null;
+let muted = false;
+
+function initAudio() {
+  if (!audioCtx) try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+}
+
+function playSound(type) {
+  if (muted || !audioCtx) return;
+  try {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    const t = audioCtx.currentTime;
+    switch(type) {
+      case 'move':
+        osc.type = 'sine'; osc.frequency.setValueAtTime(440, t);
+        osc.frequency.linearRampToValueAtTime(520, t + 0.06);
+        gain.gain.setValueAtTime(0.15, t); gain.gain.linearRampToValueAtTime(0, t + 0.1);
+        osc.start(t); osc.stop(t + 0.1); break;
+      case 'capture':
+        osc.type = 'triangle'; osc.frequency.setValueAtTime(300, t);
+        osc.frequency.linearRampToValueAtTime(600, t + 0.1);
+        osc.frequency.linearRampToValueAtTime(800, t + 0.15);
+        gain.gain.setValueAtTime(0.2, t); gain.gain.linearRampToValueAtTime(0, t + 0.2);
+        osc.start(t); osc.stop(t + 0.2); break;
+      case 'check':
+        osc.type = 'square'; osc.frequency.setValueAtTime(600, t);
+        osc.frequency.setValueAtTime(400, t + 0.1);
+        osc.frequency.setValueAtTime(600, t + 0.2);
+        gain.gain.setValueAtTime(0.12, t); gain.gain.linearRampToValueAtTime(0, t + 0.3);
+        osc.start(t); osc.stop(t + 0.3); break;
+      case 'gameover':
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(523, t);
+        osc.frequency.setValueAtTime(659, t + 0.15);
+        osc.frequency.setValueAtTime(784, t + 0.3);
+        osc.frequency.setValueAtTime(1047, t + 0.45);
+        gain.gain.setValueAtTime(0.2, t); gain.gain.linearRampToValueAtTime(0, t + 0.6);
+        osc.start(t); osc.stop(t + 0.6); break;
+      case 'lose':
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, t);
+        osc.frequency.linearRampToValueAtTime(200, t + 0.2);
+        osc.frequency.linearRampToValueAtTime(100, t + 0.5);
+        gain.gain.setValueAtTime(0.2, t); gain.gain.linearRampToValueAtTime(0, t + 0.6);
+        osc.start(t); osc.stop(t + 0.6); break;
+      case 'select':
+        osc.type = 'sine'; osc.frequency.setValueAtTime(660, t);
+        gain.gain.setValueAtTime(0.1, t); gain.gain.linearRampToValueAtTime(0, t + 0.08);
+        osc.start(t); osc.stop(t + 0.08); break;
+      case 'invalid':
+        osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, t);
+        gain.gain.setValueAtTime(0.08, t); gain.gain.linearRampToValueAtTime(0, t + 0.15);
+        osc.start(t); osc.stop(t + 0.15); break;
+      case 'levelup':
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(523, t);
+        osc.frequency.setValueAtTime(659, t + 0.1);
+        osc.frequency.setValueAtTime(784, t + 0.2);
+        osc.frequency.setValueAtTime(1047, t + 0.3);
+        gain.gain.setValueAtTime(0.2, t); gain.gain.linearRampToValueAtTime(0, t + 0.45);
+        osc.start(t); osc.stop(t + 0.45); break;
+    }
+  } catch(e) {}
+}
+
+// ============================================================
+// GAME STATE
+// ============================================================
+let chess = null;
+let state = 'start'; // start, playing, thinking, gameover, promote
+let selectedSquare = null;
+let validMoves = [];
+let lastMoveFrom = null;
+let lastMoveTo = null;
+let score = 0;
+let level = 1;
+let maxLevel = 3;
+let timer = 0;
+let titlePulse = 0;
+let lastTime = 0;
+let capturedByPlayer = []; // pieces player captured
+let capturedByAI = []; // pieces AI captured
+let gameMessage = '';
+let messageTimer = 0;
+let aiDelay = 0;
+let scorePop = 0;
+let checkSquare = null; // square of king in check
+let moveAnim = null; // {piece, color, fromX, fromY, toX, toY, progress}
+let particles = [];
+
+// Floating texts
+let floatingTexts = [];
+function addFloat(x, y, text, color) { floatingTexts.push({x, y, text, color, life: 1.2, vy: -40}); }
+
+// Piece point values for scoring
+const PIECE_VALUES = { p: 10, n: 30, b: 30, r: 50, q: 90 };
+
+// Character names for pieces
+const PIECE_NAMES = {
+  w: { k: 'Stitch', q: 'Lilo', b: 'Angel', n: 'Scrump', r: 'Tiki', p: 'Flower' },
+  b: { k: 'Gantu', q: 'Hamster', b: 'Reuben', n: 'Sparky', r: 'Tower', p: 'Coconut' }
+};
+
+// ============================================================
+// PIECE DRAWING FUNCTIONS
+// ============================================================
+// Each function: (cx, cy, r) where cx,cy = center, r = radius (~sqSize*0.38)
+
+// === WHITE PIECES (Stitch's team - Blue) ===
+// All pieces shaped like real chess pieces with Stitch-blue color + subtle character accents
+
+function drawStitch(cx, cy, r) {
+  // KING - classic chess king shape in Stitch blue
+  let lw = Math.max(1, r*0.04);
+  // Base
+  ctx.fillStyle = '#4169E1';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.45, cy + r*0.75);
+  ctx.lineTo(cx + r*0.45, cy + r*0.75);
+  ctx.lineTo(cx + r*0.38, cy + r*0.55);
+  ctx.lineTo(cx - r*0.38, cy + r*0.55);
+  ctx.closePath(); ctx.fill();
+  // Pedestal ring
+  ctx.fillStyle = '#5B8DEF';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + r*0.55, r*0.38, r*0.08, 0, 0, Math.PI*2); ctx.fill();
+  // Body column
+  ctx.fillStyle = '#4169E1';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.28, cy + r*0.55);
+  ctx.quadraticCurveTo(cx - r*0.18, cy + r*0.1, cx - r*0.22, cy - r*0.15);
+  ctx.lineTo(cx + r*0.22, cy - r*0.15);
+  ctx.quadraticCurveTo(cx + r*0.18, cy + r*0.1, cx + r*0.28, cy + r*0.55);
+  ctx.closePath(); ctx.fill();
+  // Head/crown base
+  ctx.fillStyle = '#5B8DEF';
+  ctx.beginPath(); ctx.arc(cx, cy - r*0.25, r*0.28, 0, Math.PI*2); ctx.fill();
+  // Cross on top (king symbol)
+  ctx.fillStyle = '#FFD700';
+  ctx.fillRect(cx - r*0.04, cy - r*0.7, r*0.08, r*0.32);
+  ctx.fillRect(cx - r*0.12, cy - r*0.6, r*0.24, r*0.08);
+  // Stitch ears (character accent)
+  ctx.fillStyle = '#4169E1';
+  ctx.beginPath(); ctx.ellipse(cx - r*0.32, cy - r*0.55, r*0.08, r*0.2, -0.3, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx + r*0.32, cy - r*0.55, r*0.08, r*0.2, 0.3, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#FF69B4';
+  ctx.beginPath(); ctx.ellipse(cx - r*0.32, cy - r*0.55, r*0.04, r*0.12, -0.3, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx + r*0.32, cy - r*0.55, r*0.04, r*0.12, 0.3, 0, Math.PI*2); ctx.fill();
+  // Face dots (Stitch eyes)
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.arc(cx - r*0.1, cy - r*0.28, r*0.045, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + r*0.1, cy - r*0.28, r*0.045, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#FFF';
+  ctx.beginPath(); ctx.arc(cx - r*0.08, cy - r*0.3, r*0.02, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + r*0.12, cy - r*0.3, r*0.02, 0, Math.PI*2); ctx.fill();
+  // Outline
+  ctx.strokeStyle = '#2a4cb8'; ctx.lineWidth = lw;
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.45, cy + r*0.75); ctx.lineTo(cx + r*0.45, cy + r*0.75);
+  ctx.stroke();
+}
+
+function drawLilo(cx, cy, r) {
+  // QUEEN - classic chess queen shape in Stitch blue
+  let lw = Math.max(1, r*0.04);
+  // Base
+  ctx.fillStyle = '#4169E1';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.45, cy + r*0.75);
+  ctx.lineTo(cx + r*0.45, cy + r*0.75);
+  ctx.lineTo(cx + r*0.38, cy + r*0.55);
+  ctx.lineTo(cx - r*0.38, cy + r*0.55);
+  ctx.closePath(); ctx.fill();
+  // Pedestal ring
+  ctx.fillStyle = '#5B8DEF';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + r*0.55, r*0.38, r*0.08, 0, 0, Math.PI*2); ctx.fill();
+  // Body column
+  ctx.fillStyle = '#4169E1';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.28, cy + r*0.55);
+  ctx.quadraticCurveTo(cx - r*0.15, cy + r*0.1, cx - r*0.25, cy - r*0.15);
+  ctx.lineTo(cx + r*0.25, cy - r*0.15);
+  ctx.quadraticCurveTo(cx + r*0.15, cy + r*0.1, cx + r*0.28, cy + r*0.55);
+  ctx.closePath(); ctx.fill();
+  // Crown with 5 points
+  ctx.fillStyle = '#5B8DEF';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.28, cy - r*0.15);
+  ctx.lineTo(cx - r*0.3, cy - r*0.55);
+  ctx.lineTo(cx - r*0.15, cy - r*0.35);
+  ctx.lineTo(cx, cy - r*0.6);
+  ctx.lineTo(cx + r*0.15, cy - r*0.35);
+  ctx.lineTo(cx + r*0.3, cy - r*0.55);
+  ctx.lineTo(cx + r*0.28, cy - r*0.15);
+  ctx.closePath(); ctx.fill();
+  // Crown ball tips
+  ctx.fillStyle = '#4169E1';
+  ctx.beginPath(); ctx.arc(cx - r*0.3, cy - r*0.58, r*0.06, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx, cy - r*0.63, r*0.06, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + r*0.3, cy - r*0.58, r*0.06, 0, Math.PI*2); ctx.fill();
+  // Flower accent (Lilo's hibiscus)
+  ctx.fillStyle = '#FF69B4';
+  for (let i = 0; i < 5; i++) {
+    let a = i * Math.PI * 2 / 5 - Math.PI/2;
+    ctx.beginPath();
+    ctx.arc(cx + Math.cos(a)*r*0.08, cy - r*0.25 + Math.sin(a)*r*0.08, r*0.05, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#FFD700';
+  ctx.beginPath(); ctx.arc(cx, cy - r*0.25, r*0.03, 0, Math.PI*2); ctx.fill();
+  // Outline
+  ctx.strokeStyle = '#2a4cb8'; ctx.lineWidth = lw;
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.45, cy + r*0.75); ctx.lineTo(cx + r*0.45, cy + r*0.75);
+  ctx.stroke();
+}
+
+function drawAngel(cx, cy, r) {
+  // BISHOP - classic diagonal-cut head shape in Stitch blue
+  let lw = Math.max(1, r*0.04);
+  // Base
+  ctx.fillStyle = '#4169E1';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.4, cy + r*0.75);
+  ctx.lineTo(cx + r*0.4, cy + r*0.75);
+  ctx.lineTo(cx + r*0.33, cy + r*0.55);
+  ctx.lineTo(cx - r*0.33, cy + r*0.55);
+  ctx.closePath(); ctx.fill();
+  // Ring
+  ctx.fillStyle = '#5B8DEF';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + r*0.55, r*0.33, r*0.07, 0, 0, Math.PI*2); ctx.fill();
+  // Body column
+  ctx.fillStyle = '#4169E1';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.24, cy + r*0.55);
+  ctx.quadraticCurveTo(cx - r*0.14, cy + r*0.15, cx - r*0.2, cy - r*0.1);
+  ctx.lineTo(cx + r*0.2, cy - r*0.1);
+  ctx.quadraticCurveTo(cx + r*0.14, cy + r*0.15, cx + r*0.24, cy + r*0.55);
+  ctx.closePath(); ctx.fill();
+  // Bishop head (pointed with diagonal slit)
+  ctx.fillStyle = '#5B8DEF';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.22, cy - r*0.1);
+  ctx.quadraticCurveTo(cx - r*0.25, cy - r*0.4, cx, cy - r*0.7);
+  ctx.quadraticCurveTo(cx + r*0.25, cy - r*0.4, cx + r*0.22, cy - r*0.1);
+  ctx.closePath(); ctx.fill();
+  // Diagonal slit
+  ctx.strokeStyle = '#2a4cb8'; ctx.lineWidth = Math.max(1, r*0.05);
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.08, cy - r*0.15);
+  ctx.lineTo(cx + r*0.08, cy - r*0.45);
+  ctx.stroke();
+  // Ball on top
+  ctx.fillStyle = '#4169E1';
+  ctx.beginPath(); ctx.arc(cx, cy - r*0.72, r*0.06, 0, Math.PI*2); ctx.fill();
+  // Heart accent (Angel's symbol)
+  ctx.fillStyle = '#FF69B4';
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r*0.2);
+  ctx.bezierCurveTo(cx - r*0.1, cy - r*0.32, cx - r*0.18, cy - r*0.18, cx, cy - r*0.08);
+  ctx.bezierCurveTo(cx + r*0.18, cy - r*0.18, cx + r*0.1, cy - r*0.32, cx, cy - r*0.2);
+  ctx.fill();
+  // Outline
+  ctx.strokeStyle = '#2a4cb8'; ctx.lineWidth = lw;
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.4, cy + r*0.75); ctx.lineTo(cx + r*0.4, cy + r*0.75);
+  ctx.stroke();
+}
+
+function drawScrump(cx, cy, r) {
+  // KNIGHT - horse head shape in Stitch blue
+  let lw = Math.max(1, r*0.04);
+  // Base
+  ctx.fillStyle = '#4169E1';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.4, cy + r*0.75);
+  ctx.lineTo(cx + r*0.4, cy + r*0.75);
+  ctx.lineTo(cx + r*0.33, cy + r*0.5);
+  ctx.lineTo(cx - r*0.33, cy + r*0.5);
+  ctx.closePath(); ctx.fill();
+  // Ring
+  ctx.fillStyle = '#5B8DEF';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + r*0.5, r*0.33, r*0.07, 0, 0, Math.PI*2); ctx.fill();
+  // Horse neck & head
+  ctx.fillStyle = '#4169E1';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.2, cy + r*0.5);
+  ctx.lineTo(cx - r*0.22, cy + r*0.1);
+  ctx.quadraticCurveTo(cx - r*0.25, cy - r*0.3, cx - r*0.1, cy - r*0.55);
+  ctx.quadraticCurveTo(cx, cy - r*0.7, cx + r*0.15, cy - r*0.55);
+  ctx.lineTo(cx + r*0.25, cy - r*0.35);
+  ctx.quadraticCurveTo(cx + r*0.3, cy - r*0.2, cx + r*0.22, cy + r*0.1);
+  ctx.lineTo(cx + r*0.2, cy + r*0.5);
+  ctx.closePath(); ctx.fill();
+  // Mane
+  ctx.fillStyle = '#5B8DEF';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.1, cy - r*0.55);
+  ctx.quadraticCurveTo(cx + r*0.05, cy - r*0.5, cx + r*0.1, cy - r*0.35);
+  ctx.quadraticCurveTo(cx + r*0.15, cy - r*0.2, cx + r*0.12, cy);
+  ctx.lineTo(cx + r*0.04, cy);
+  ctx.quadraticCurveTo(cx + r*0.06, cy - r*0.18, cx + r*0.02, cy - r*0.35);
+  ctx.quadraticCurveTo(cx - r*0.02, cy - r*0.45, cx - r*0.1, cy - r*0.55);
+  ctx.closePath(); ctx.fill();
+  // Horse ear
+  ctx.fillStyle = '#4169E1';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.05, cy - r*0.55);
+  ctx.lineTo(cx - r*0.1, cy - r*0.75);
+  ctx.lineTo(cx + r*0.05, cy - r*0.6);
+  ctx.closePath(); ctx.fill();
+  // Eye
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.arc(cx + r*0.05, cy - r*0.3, r*0.045, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#FFF';
+  ctx.beginPath(); ctx.arc(cx + r*0.06, cy - r*0.32, r*0.02, 0, Math.PI*2); ctx.fill();
+  // Nostril
+  ctx.fillStyle = '#2a4cb8';
+  ctx.beginPath(); ctx.arc(cx + r*0.18, cy - r*0.38, r*0.03, 0, Math.PI*2); ctx.fill();
+  // Outline
+  ctx.strokeStyle = '#2a4cb8'; ctx.lineWidth = lw;
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.4, cy + r*0.75); ctx.lineTo(cx + r*0.4, cy + r*0.75);
+  ctx.stroke();
+}
+
+function drawTiki(cx, cy, r) {
+  // ROOK - castle tower shape in Stitch blue
+  let lw = Math.max(1, r*0.04);
+  // Base
+  ctx.fillStyle = '#4169E1';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.42, cy + r*0.75);
+  ctx.lineTo(cx + r*0.42, cy + r*0.75);
+  ctx.lineTo(cx + r*0.35, cy + r*0.55);
+  ctx.lineTo(cx - r*0.35, cy + r*0.55);
+  ctx.closePath(); ctx.fill();
+  // Ring
+  ctx.fillStyle = '#5B8DEF';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + r*0.55, r*0.35, r*0.07, 0, 0, Math.PI*2); ctx.fill();
+  // Tower body
+  ctx.fillStyle = '#4169E1';
+  ctx.fillRect(cx - r*0.25, cy - r*0.35, r*0.5, r*0.9);
+  // Wider top
+  ctx.fillStyle = '#5B8DEF';
+  ctx.fillRect(cx - r*0.32, cy - r*0.35, r*0.64, r*0.12);
+  // Battlements (3 crenellations)
+  ctx.fillStyle = '#4169E1';
+  ctx.fillRect(cx - r*0.32, cy - r*0.55, r*0.16, r*0.2);
+  ctx.fillRect(cx - r*0.08, cy - r*0.55, r*0.16, r*0.2);
+  ctx.fillRect(cx + r*0.16, cy - r*0.55, r*0.16, r*0.2);
+  // Door/window (tiki face hint)
+  ctx.fillStyle = '#2a4cb8';
+  ctx.beginPath();
+  ctx.arc(cx, cy + r*0.1, r*0.1, Math.PI, 0);
+  ctx.fillRect(cx - r*0.1, cy + r*0.1, r*0.2, r*0.15);
+  ctx.fill();
+  // Outline
+  ctx.strokeStyle = '#2a4cb8'; ctx.lineWidth = lw;
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.42, cy + r*0.75); ctx.lineTo(cx + r*0.42, cy + r*0.75);
+  ctx.stroke();
+}
+
+function drawHibiscus(cx, cy, r) {
+  // PAWN - classic pawn shape in Stitch blue
+  let lw = Math.max(1, r*0.04);
+  // Base
+  ctx.fillStyle = '#4169E1';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.35, cy + r*0.7);
+  ctx.lineTo(cx + r*0.35, cy + r*0.7);
+  ctx.lineTo(cx + r*0.28, cy + r*0.5);
+  ctx.lineTo(cx - r*0.28, cy + r*0.5);
+  ctx.closePath(); ctx.fill();
+  // Stem
+  ctx.fillStyle = '#4169E1';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.18, cy + r*0.5);
+  ctx.quadraticCurveTo(cx - r*0.1, cy + r*0.2, cx - r*0.15, cy);
+  ctx.lineTo(cx + r*0.15, cy);
+  ctx.quadraticCurveTo(cx + r*0.1, cy + r*0.2, cx + r*0.18, cy + r*0.5);
+  ctx.closePath(); ctx.fill();
+  // Collar ring
+  ctx.fillStyle = '#5B8DEF';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, r*0.17, r*0.05, 0, 0, Math.PI*2); ctx.fill();
+  // Ball head
+  ctx.fillStyle = '#5B8DEF';
+  ctx.beginPath(); ctx.arc(cx, cy - r*0.22, r*0.22, 0, Math.PI*2); ctx.fill();
+  // Tiny hibiscus accent on head
+  ctx.fillStyle = '#FF69B4';
+  for (let i = 0; i < 5; i++) {
+    let a = i * Math.PI * 2 / 5 - Math.PI/2;
+    ctx.beginPath();
+    ctx.arc(cx + Math.cos(a)*r*0.06, cy - r*0.22 + Math.sin(a)*r*0.06, r*0.035, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#FFD700';
+  ctx.beginPath(); ctx.arc(cx, cy - r*0.22, r*0.02, 0, Math.PI*2); ctx.fill();
+  // Outline
+  ctx.strokeStyle = '#2a4cb8'; ctx.lineWidth = lw;
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.35, cy + r*0.7); ctx.lineTo(cx + r*0.35, cy + r*0.7);
+  ctx.stroke();
+}
+
+// === BLACK PIECES (Villain team - Purple) ===
+
+function drawGantu(cx, cy, r) {
+  // KING - chess king shape in villain purple
+  let lw = Math.max(1, r*0.04);
+  // Base
+  ctx.fillStyle = '#5C1070';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.45, cy + r*0.75);
+  ctx.lineTo(cx + r*0.45, cy + r*0.75);
+  ctx.lineTo(cx + r*0.38, cy + r*0.55);
+  ctx.lineTo(cx - r*0.38, cy + r*0.55);
+  ctx.closePath(); ctx.fill();
+  // Pedestal ring
+  ctx.fillStyle = '#7B2D8E';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + r*0.55, r*0.38, r*0.08, 0, 0, Math.PI*2); ctx.fill();
+  // Body column
+  ctx.fillStyle = '#5C1070';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.28, cy + r*0.55);
+  ctx.quadraticCurveTo(cx - r*0.18, cy + r*0.1, cx - r*0.22, cy - r*0.15);
+  ctx.lineTo(cx + r*0.22, cy - r*0.15);
+  ctx.quadraticCurveTo(cx + r*0.18, cy + r*0.1, cx + r*0.28, cy + r*0.55);
+  ctx.closePath(); ctx.fill();
+  // Head/crown base
+  ctx.fillStyle = '#7B2D8E';
+  ctx.beginPath(); ctx.arc(cx, cy - r*0.25, r*0.28, 0, Math.PI*2); ctx.fill();
+  // Cross on top (king symbol) - dark
+  ctx.fillStyle = '#333';
+  ctx.fillRect(cx - r*0.04, cy - r*0.7, r*0.08, r*0.32);
+  ctx.fillRect(cx - r*0.12, cy - r*0.6, r*0.24, r*0.08);
+  // Evil eyes (red)
+  ctx.fillStyle = '#FF2222';
+  ctx.beginPath(); ctx.arc(cx - r*0.1, cy - r*0.28, r*0.045, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + r*0.1, cy - r*0.28, r*0.045, 0, Math.PI*2); ctx.fill();
+  // Angry brows
+  ctx.strokeStyle = '#333'; ctx.lineWidth = Math.max(1, r*0.05);
+  ctx.beginPath(); ctx.moveTo(cx - r*0.18, cy - r*0.38); ctx.lineTo(cx - r*0.05, cy - r*0.34); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx + r*0.18, cy - r*0.38); ctx.lineTo(cx + r*0.05, cy - r*0.34); ctx.stroke();
+  // Outline
+  ctx.strokeStyle = '#3a0a4a'; ctx.lineWidth = lw;
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.45, cy + r*0.75); ctx.lineTo(cx + r*0.45, cy + r*0.75);
+  ctx.stroke();
+}
+
+function drawHamsterviel(cx, cy, r) {
+  // QUEEN - chess queen shape in villain purple
+  let lw = Math.max(1, r*0.04);
+  // Base
+  ctx.fillStyle = '#5C1070';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.45, cy + r*0.75);
+  ctx.lineTo(cx + r*0.45, cy + r*0.75);
+  ctx.lineTo(cx + r*0.38, cy + r*0.55);
+  ctx.lineTo(cx - r*0.38, cy + r*0.55);
+  ctx.closePath(); ctx.fill();
+  // Pedestal ring
+  ctx.fillStyle = '#7B2D8E';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + r*0.55, r*0.38, r*0.08, 0, 0, Math.PI*2); ctx.fill();
+  // Body column
+  ctx.fillStyle = '#5C1070';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.28, cy + r*0.55);
+  ctx.quadraticCurveTo(cx - r*0.15, cy + r*0.1, cx - r*0.25, cy - r*0.15);
+  ctx.lineTo(cx + r*0.25, cy - r*0.15);
+  ctx.quadraticCurveTo(cx + r*0.15, cy + r*0.1, cx + r*0.28, cy + r*0.55);
+  ctx.closePath(); ctx.fill();
+  // Crown with 5 points
+  ctx.fillStyle = '#7B2D8E';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.28, cy - r*0.15);
+  ctx.lineTo(cx - r*0.3, cy - r*0.55);
+  ctx.lineTo(cx - r*0.15, cy - r*0.35);
+  ctx.lineTo(cx, cy - r*0.6);
+  ctx.lineTo(cx + r*0.15, cy - r*0.35);
+  ctx.lineTo(cx + r*0.3, cy - r*0.55);
+  ctx.lineTo(cx + r*0.28, cy - r*0.15);
+  ctx.closePath(); ctx.fill();
+  // Crown ball tips
+  ctx.fillStyle = '#5C1070';
+  ctx.beginPath(); ctx.arc(cx - r*0.3, cy - r*0.58, r*0.06, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx, cy - r*0.63, r*0.06, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + r*0.3, cy - r*0.58, r*0.06, 0, Math.PI*2); ctx.fill();
+  // Evil grin accent
+  ctx.strokeStyle = '#FF2222'; ctx.lineWidth = Math.max(1, r*0.04);
+  ctx.beginPath(); ctx.arc(cx, cy - r*0.2, r*0.1, 0.2, Math.PI - 0.2); ctx.stroke();
+  // Outline
+  ctx.strokeStyle = '#3a0a4a'; ctx.lineWidth = lw;
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.45, cy + r*0.75); ctx.lineTo(cx + r*0.45, cy + r*0.75);
+  ctx.stroke();
+}
+
+function drawReuben(cx, cy, r) {
+  // BISHOP - chess bishop shape in villain purple
+  let lw = Math.max(1, r*0.04);
+  // Base
+  ctx.fillStyle = '#5C1070';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.4, cy + r*0.75);
+  ctx.lineTo(cx + r*0.4, cy + r*0.75);
+  ctx.lineTo(cx + r*0.33, cy + r*0.55);
+  ctx.lineTo(cx - r*0.33, cy + r*0.55);
+  ctx.closePath(); ctx.fill();
+  // Ring
+  ctx.fillStyle = '#7B2D8E';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + r*0.55, r*0.33, r*0.07, 0, 0, Math.PI*2); ctx.fill();
+  // Body column
+  ctx.fillStyle = '#5C1070';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.24, cy + r*0.55);
+  ctx.quadraticCurveTo(cx - r*0.14, cy + r*0.15, cx - r*0.2, cy - r*0.1);
+  ctx.lineTo(cx + r*0.2, cy - r*0.1);
+  ctx.quadraticCurveTo(cx + r*0.14, cy + r*0.15, cx + r*0.24, cy + r*0.55);
+  ctx.closePath(); ctx.fill();
+  // Bishop head (pointed with diagonal slit)
+  ctx.fillStyle = '#7B2D8E';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.22, cy - r*0.1);
+  ctx.quadraticCurveTo(cx - r*0.25, cy - r*0.4, cx, cy - r*0.7);
+  ctx.quadraticCurveTo(cx + r*0.25, cy - r*0.4, cx + r*0.22, cy - r*0.1);
+  ctx.closePath(); ctx.fill();
+  // Diagonal slit
+  ctx.strokeStyle = '#3a0a4a'; ctx.lineWidth = Math.max(1, r*0.05);
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.08, cy - r*0.15);
+  ctx.lineTo(cx + r*0.08, cy - r*0.45);
+  ctx.stroke();
+  // Ball on top
+  ctx.fillStyle = '#5C1070';
+  ctx.beginPath(); ctx.arc(cx, cy - r*0.72, r*0.06, 0, Math.PI*2); ctx.fill();
+  // Outline
+  ctx.strokeStyle = '#3a0a4a'; ctx.lineWidth = lw;
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.4, cy + r*0.75); ctx.lineTo(cx + r*0.4, cy + r*0.75);
+  ctx.stroke();
+}
+
+function drawSparky(cx, cy, r) {
+  // KNIGHT - horse head shape in villain purple
+  let lw = Math.max(1, r*0.04);
+  // Base
+  ctx.fillStyle = '#5C1070';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.4, cy + r*0.75);
+  ctx.lineTo(cx + r*0.4, cy + r*0.75);
+  ctx.lineTo(cx + r*0.33, cy + r*0.5);
+  ctx.lineTo(cx - r*0.33, cy + r*0.5);
+  ctx.closePath(); ctx.fill();
+  // Ring
+  ctx.fillStyle = '#7B2D8E';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + r*0.5, r*0.33, r*0.07, 0, 0, Math.PI*2); ctx.fill();
+  // Horse neck & head
+  ctx.fillStyle = '#5C1070';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.2, cy + r*0.5);
+  ctx.lineTo(cx - r*0.22, cy + r*0.1);
+  ctx.quadraticCurveTo(cx - r*0.25, cy - r*0.3, cx - r*0.1, cy - r*0.55);
+  ctx.quadraticCurveTo(cx, cy - r*0.7, cx + r*0.15, cy - r*0.55);
+  ctx.lineTo(cx + r*0.25, cy - r*0.35);
+  ctx.quadraticCurveTo(cx + r*0.3, cy - r*0.2, cx + r*0.22, cy + r*0.1);
+  ctx.lineTo(cx + r*0.2, cy + r*0.5);
+  ctx.closePath(); ctx.fill();
+  // Mane
+  ctx.fillStyle = '#7B2D8E';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.1, cy - r*0.55);
+  ctx.quadraticCurveTo(cx + r*0.05, cy - r*0.5, cx + r*0.1, cy - r*0.35);
+  ctx.quadraticCurveTo(cx + r*0.15, cy - r*0.2, cx + r*0.12, cy);
+  ctx.lineTo(cx + r*0.04, cy);
+  ctx.quadraticCurveTo(cx + r*0.06, cy - r*0.18, cx + r*0.02, cy - r*0.35);
+  ctx.quadraticCurveTo(cx - r*0.02, cy - r*0.45, cx - r*0.1, cy - r*0.55);
+  ctx.closePath(); ctx.fill();
+  // Horse ear
+  ctx.fillStyle = '#5C1070';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.05, cy - r*0.55);
+  ctx.lineTo(cx - r*0.1, cy - r*0.75);
+  ctx.lineTo(cx + r*0.05, cy - r*0.6);
+  ctx.closePath(); ctx.fill();
+  // Eye (red)
+  ctx.fillStyle = '#FF2222';
+  ctx.beginPath(); ctx.arc(cx + r*0.05, cy - r*0.3, r*0.045, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.arc(cx + r*0.05, cy - r*0.3, r*0.025, 0, Math.PI*2); ctx.fill();
+  // Nostril
+  ctx.fillStyle = '#3a0a4a';
+  ctx.beginPath(); ctx.arc(cx + r*0.18, cy - r*0.38, r*0.03, 0, Math.PI*2); ctx.fill();
+  // Outline
+  ctx.strokeStyle = '#3a0a4a'; ctx.lineWidth = lw;
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.4, cy + r*0.75); ctx.lineTo(cx + r*0.4, cy + r*0.75);
+  ctx.stroke();
+}
+
+function drawDarkTiki(cx, cy, r) {
+  // ROOK - castle tower shape in villain purple
+  let lw = Math.max(1, r*0.04);
+  // Base
+  ctx.fillStyle = '#5C1070';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.42, cy + r*0.75);
+  ctx.lineTo(cx + r*0.42, cy + r*0.75);
+  ctx.lineTo(cx + r*0.35, cy + r*0.55);
+  ctx.lineTo(cx - r*0.35, cy + r*0.55);
+  ctx.closePath(); ctx.fill();
+  // Ring
+  ctx.fillStyle = '#7B2D8E';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + r*0.55, r*0.35, r*0.07, 0, 0, Math.PI*2); ctx.fill();
+  // Tower body
+  ctx.fillStyle = '#5C1070';
+  ctx.fillRect(cx - r*0.25, cy - r*0.35, r*0.5, r*0.9);
+  // Wider top
+  ctx.fillStyle = '#7B2D8E';
+  ctx.fillRect(cx - r*0.32, cy - r*0.35, r*0.64, r*0.12);
+  // Battlements (3 crenellations)
+  ctx.fillStyle = '#5C1070';
+  ctx.fillRect(cx - r*0.32, cy - r*0.55, r*0.16, r*0.2);
+  ctx.fillRect(cx - r*0.08, cy - r*0.55, r*0.16, r*0.2);
+  ctx.fillRect(cx + r*0.16, cy - r*0.55, r*0.16, r*0.2);
+  // Door/window
+  ctx.fillStyle = '#3a0a4a';
+  ctx.beginPath();
+  ctx.arc(cx, cy + r*0.1, r*0.1, Math.PI, 0);
+  ctx.fillRect(cx - r*0.1, cy + r*0.1, r*0.2, r*0.15);
+  ctx.fill();
+  // Outline
+  ctx.strokeStyle = '#3a0a4a'; ctx.lineWidth = lw;
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.42, cy + r*0.75); ctx.lineTo(cx + r*0.42, cy + r*0.75);
+  ctx.stroke();
+}
+
+function drawCoconut(cx, cy, r) {
+  // PAWN - classic pawn shape in villain purple
+  let lw = Math.max(1, r*0.04);
+  // Base
+  ctx.fillStyle = '#5C1070';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.35, cy + r*0.7);
+  ctx.lineTo(cx + r*0.35, cy + r*0.7);
+  ctx.lineTo(cx + r*0.28, cy + r*0.5);
+  ctx.lineTo(cx - r*0.28, cy + r*0.5);
+  ctx.closePath(); ctx.fill();
+  // Stem
+  ctx.fillStyle = '#5C1070';
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.18, cy + r*0.5);
+  ctx.quadraticCurveTo(cx - r*0.1, cy + r*0.2, cx - r*0.15, cy);
+  ctx.lineTo(cx + r*0.15, cy);
+  ctx.quadraticCurveTo(cx + r*0.1, cy + r*0.2, cx + r*0.18, cy + r*0.5);
+  ctx.closePath(); ctx.fill();
+  // Collar ring
+  ctx.fillStyle = '#7B2D8E';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, r*0.17, r*0.05, 0, 0, Math.PI*2); ctx.fill();
+  // Ball head
+  ctx.fillStyle = '#7B2D8E';
+  ctx.beginPath(); ctx.arc(cx, cy - r*0.22, r*0.22, 0, Math.PI*2); ctx.fill();
+  // Outline
+  ctx.strokeStyle = '#3a0a4a'; ctx.lineWidth = lw;
+  ctx.beginPath();
+  ctx.moveTo(cx - r*0.35, cy + r*0.7); ctx.lineTo(cx + r*0.35, cy + r*0.7);
+  ctx.stroke();
+}
+
+// Piece draw dispatch
+const PIECE_DRAW = {
+  w: { k: drawStitch, q: drawLilo, b: drawAngel, n: drawScrump, r: drawTiki, p: drawHibiscus },
+  b: { k: drawGantu, q: drawHamsterviel, b: drawReuben, n: drawSparky, r: drawDarkTiki, p: drawCoconut }
+};
+
+function drawPiece(type, color, cx, cy, size) {
+  let r = size * 0.42;
+  let fn = PIECE_DRAW[color] && PIECE_DRAW[color][type];
+  if (fn) fn(cx, cy, r);
+}
+
+// ============================================================
+// BOARD DRAWING
+// ============================================================
+const LIGHT_SQ = '#F5DEB3';  // sandy tan
+const DARK_SQ = '#5F9EA0';   // ocean teal
+const SELECT_COLOR = 'rgba(255, 215, 0, 0.6)';
+const MOVE_DOT = 'rgba(76, 175, 80, 0.7)';
+const CAPTURE_RING = 'rgba(255, 80, 80, 0.7)';
+const LAST_MOVE = 'rgba(100, 200, 255, 0.35)';
+const CHECK_COLOR = 'rgba(255, 50, 50, 0.5)';
+
+function drawBoard() {
+  // Wooden border
+  ctx.fillStyle = '#6B4226';
+  ctx.fillRect(boardX - 6, boardY - 6, boardSize + 12, boardSize + 12);
+  ctx.fillStyle = '#8B6914';
+  ctx.fillRect(boardX - 3, boardY - 3, boardSize + 6, boardSize + 6);
+
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 8; col++) {
+      let x = boardX + col * sqSize;
+      let y = boardY + row * sqSize;
+      let isLight = (row + col) % 2 === 0;
+
+      // Base square color
+      ctx.fillStyle = isLight ? LIGHT_SQ : DARK_SQ;
+      ctx.fillRect(x, y, sqSize, sqSize);
+
+      let sq = String.fromCharCode(97 + col) + (8 - row);
+
+      // Last move highlight
+      if (sq === lastMoveFrom || sq === lastMoveTo) {
+        ctx.fillStyle = LAST_MOVE;
+        ctx.fillRect(x, y, sqSize, sqSize);
+      }
+
+      // Check highlight
+      if (sq === checkSquare) {
+        ctx.fillStyle = CHECK_COLOR;
+        ctx.fillRect(x, y, sqSize, sqSize);
+      }
+
+      // Selected square
+      if (sq === selectedSquare) {
+        ctx.fillStyle = SELECT_COLOR;
+        ctx.fillRect(x, y, sqSize, sqSize);
+        // Glow border
+        ctx.strokeStyle = '#FFD700';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(x + 1, y + 1, sqSize - 2, sqSize - 2);
+      }
+    }
+  }
+
+  // Valid move indicators
+  for (let move of validMoves) {
+    let col = move.to.charCodeAt(0) - 97;
+    let row = 8 - parseInt(move.to[1]);
+    let x = boardX + col * sqSize + sqSize / 2;
+    let y = boardY + row * sqSize + sqSize / 2;
+
+    if (move.captured) {
+      // Capture ring
+      ctx.strokeStyle = CAPTURE_RING;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(x, y, sqSize * 0.4, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      // Move dot (big for kids)
+      ctx.fillStyle = MOVE_DOT;
+      ctx.beginPath();
+      ctx.arc(x, y, sqSize * 0.18, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Draw coordinates (small, subtle)
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.font = Math.max(11, sqSize * 0.22) + 'px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  for (let col = 0; col < 8; col++) {
+    ctx.fillText('abcdefgh'[col], boardX + col * sqSize + 2, boardY + boardSize + 2);
+  }
+  ctx.textAlign = 'right';
+  for (let row = 0; row < 8; row++) {
+    ctx.fillText(String(8 - row), boardX - 4, boardY + row * sqSize + 2);
+  }
+}
+
+function drawPieces() {
+  if (!chess) return;
+  let board = chess.board();
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 8; col++) {
+      let piece = board[row][col];
+      if (!piece) continue;
+
+      let sq = String.fromCharCode(97 + col) + (8 - row);
+
+      // Skip piece being animated
+      if (moveAnim && sq === moveAnim.toSq) continue;
+
+      let cx = boardX + col * sqSize + sqSize / 2;
+      let cy = boardY + row * sqSize + sqSize / 2;
+
+      ctx.save();
+      drawPiece(piece.type, piece.color, cx, cy, sqSize);
+      ctx.restore();
+    }
+  }
+
+  // Draw animated piece
+  if (moveAnim) {
+    let p = moveAnim.progress;
+    let cx = moveAnim.fromX + (moveAnim.toX - moveAnim.fromX) * p;
+    let cy = moveAnim.fromY + (moveAnim.toY - moveAnim.fromY) * p;
+    // Slight arc
+    cy -= Math.sin(p * Math.PI) * sqSize * 0.3;
+    ctx.save();
+    drawPiece(moveAnim.type, moveAnim.color, cx, cy, sqSize);
+    ctx.restore();
+  }
+}
+
+// ============================================================
+// UI DRAWING
+// ============================================================
+function drawHUD() {
+  let fontSize = Math.max(14, Math.min(20, W * 0.04));
+
+  // Top bar background
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(0, 0, W, boardY - 10);
+
+  // Title
+  ctx.fillStyle = '#FFD700';
+  ctx.font = 'bold ' + (fontSize + 4) + 'px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Lilo & Stitch Chess', W / 2, fontSize + 8);
+
+  // Level & Score
+  ctx.fillStyle = '#FFF';
+  ctx.font = 'bold ' + fontSize + 'px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('Level ' + level, 10, fontSize + 8);
+
+  // Score with pop
+  let sScale = scorePop > 0 ? 1 + scorePop * 0.4 : 1;
+  ctx.save();
+  ctx.textAlign = 'right';
+  ctx.translate(W - 10, fontSize + 8);
+  ctx.scale(sScale, sScale);
+  ctx.fillStyle = '#FFD700';
+  ctx.fillText('Score: ' + score, 0, 0);
+  ctx.restore();
+
+  // Captured pieces display (above board)
+  let capY = boardY - 25;
+  if (capturedByPlayer.length > 0) {
+    ctx.fillStyle = '#FFF';
+    ctx.font = (fontSize - 4) + 'px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('Won:', 10, capY);
+    let cx = 45;
+    for (let p of capturedByPlayer) {
+      ctx.save();
+      drawPiece(p.type, p.color, cx, capY - 4, 22);
+      ctx.restore();
+      cx += 18;
+    }
+  }
+
+  // Turn indicator & buttons below board
+  let belowY = boardY + boardSize + 15;
+
+  // Turn indicator
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(0, belowY - 5, W, 55);
+
+  let turnText = '';
+  if (state === 'playing') {
+    turnText = chess.turn() === 'w' ? 'Your turn!' : 'Thinking...';
+  } else if (state === 'thinking') {
+    turnText = 'Opponent thinking...';
+  }
+
+  ctx.fillStyle = chess && chess.turn() === 'w' ? '#90EE90' : '#FFB347';
+  ctx.font = 'bold ' + (fontSize + 2) + 'px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(turnText, W / 2, belowY + 14);
+
+  // Undo button
+  let undoBtnX = 15, undoBtnY = belowY + 25, undoBtnW = 80, undoBtnH = 44;
+  ctx.fillStyle = theme.primary || '#3b82f6';
+  roundRect(undoBtnX, undoBtnY, undoBtnW, undoBtnH, 8);
+  ctx.fill();
+  ctx.fillStyle = '#FFF';
+  ctx.font = 'bold ' + (fontSize - 2) + 'px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Undo', undoBtnX + undoBtnW / 2, undoBtnY + undoBtnH / 2 + 5);
+
+  // Mute button
+  let muteBtnX = W - 55, muteBtnY = belowY + 25, muteBtnW = 44, muteBtnH = 44;
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  roundRect(muteBtnX, muteBtnY, muteBtnW, muteBtnH, 8);
+  ctx.fill();
+  ctx.fillStyle = '#FFF';
+  ctx.font = (fontSize) + 'px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(muted ? 'X' : '♪', muteBtnX + muteBtnW / 2, muteBtnY + muteBtnH / 2 + 5);
+
+  // Timer
+  let mins = Math.floor(timer / 60);
+  let secs = Math.floor(timer % 60);
+  ctx.fillStyle = '#CCC';
+  ctx.font = (fontSize - 2) + 'px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText(String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0'), W - 60, belowY + 14);
+
+  // Check/message display
+  if (messageTimer > 0) {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    let msgW = Math.min(300, W - 40);
+    roundRect((W - msgW) / 2, boardY + boardSize / 2 - 25, msgW, 50, 12);
+    ctx.fill();
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold ' + (fontSize + 6) + 'px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(gameMessage, W / 2, boardY + boardSize / 2 + 8);
+  }
+
+  // Captured by AI (below board)
+  if (capturedByAI.length > 0) {
+    let capAIY = belowY + 12;
+    ctx.fillStyle = '#CCC';
+    ctx.font = (fontSize - 4) + 'px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('Lost:', W - 15, capAIY);
+    let cxr = W - 45;
+    for (let i = capturedByAI.length - 1; i >= 0; i--) {
+      ctx.save();
+      drawPiece(capturedByAI[i].type, capturedByAI[i].color, cxr, capAIY - 4, 22);
+      ctx.restore();
+      cxr -= 18;
+    }
+  }
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// ============================================================
+// PARTICLES
+// ============================================================
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count && particles.length < 50; i++) {
+    particles.push({
+      x, y, vx: (Math.random()-0.5)*120, vy: (Math.random()-0.5)*120 - 30,
+      life: 0.6 + Math.random()*0.4, maxLife: 0.6 + Math.random()*0.4,
+      color, size: 3 + Math.random()*4
+    });
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    let p = particles[i];
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.vy += 150 * dt; p.life -= dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (let p of particles) {
+    ctx.globalAlpha = p.life / p.maxLife;
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (p.life/p.maxLife), 0, Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ============================================================
+// FLOATING TEXTS
+// ============================================================
+function updateFloatingTexts(dt) {
+  for (let i = floatingTexts.length - 1; i >= 0; i--) {
+    let f = floatingTexts[i];
+    f.y += f.vy * dt; f.life -= dt;
+    if (f.life <= 0) floatingTexts.splice(i, 1);
+  }
+}
+
+function drawFloatingTexts() {
+  for (let f of floatingTexts) {
+    ctx.globalAlpha = Math.min(1, f.life);
+    ctx.fillStyle = f.color;
+    ctx.font = 'bold 22px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(f.text, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ============================================================
+// BACKGROUND
+// ============================================================
+function drawBackground() {
+  // Ocean gradient
+  let grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#FF9E47');
+  grad.addColorStop(0.3, '#FFD080');
+  grad.addColorStop(0.5, '#87CEEB');
+  grad.addColorStop(1, '#1E90FF');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Clouds
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  let t = titlePulse * 5;
+  drawSmallCloud(W * 0.15 + Math.sin(t * 0.01) * 10, H * 0.08, 40);
+  drawSmallCloud(W * 0.55 + Math.sin(t * 0.015) * 8, H * 0.05, 30);
+  drawSmallCloud(W * 0.85 + Math.sin(t * 0.012) * 12, H * 0.1, 35);
+}
+
+function drawSmallCloud(x, y, s) {
+  ctx.beginPath();
+  ctx.arc(x, y, s*0.4, 0, Math.PI*2);
+  ctx.arc(x + s*0.3, y - s*0.1, s*0.3, 0, Math.PI*2);
+  ctx.arc(x + s*0.5, y, s*0.35, 0, Math.PI*2);
+  ctx.fill();
+}
+
+// ============================================================
+// START SCREEN
+// ============================================================
+function drawStartScreen() {
+  drawBackground();
+
+  // Title
+  let pulse = 1 + Math.sin(titlePulse * 2) * 0.04;
+  ctx.save();
+  ctx.translate(W / 2, H * 0.15);
+  ctx.scale(pulse, pulse);
+  let ts = Math.min(42, W * 0.08);
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.font = 'bold ' + ts + 'px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Lilo & Stitch', 2, 2);
+  ctx.fillText('Chess', 2, ts + 12);
+  ctx.fillStyle = '#FFD700';
+  ctx.fillText('Lilo & Stitch', 0, 0);
+  ctx.fillStyle = '#FF69B4';
+  ctx.fillText('Chess', 0, ts + 10);
+  ctx.restore();
+
+  // Stitch and Lilo
+  let charY = H * 0.38;
+  ctx.save();
+  drawStitch(W / 2 - 50, charY, sqSize ? sqSize * 0.6 : 30);
+  drawLilo(W / 2 + 50, charY, sqSize ? sqSize * 0.6 : 30);
+  ctx.restore();
+
+  // Chess board mini preview
+  let miniSq = Math.min(25, W * 0.04);
+  let miniX = W / 2 - miniSq * 4;
+  let miniY = H * 0.52;
+  for (let r = 0; r < 4; r++) {
+    for (let c = 0; c < 8; c++) {
+      ctx.fillStyle = (r + c) % 2 === 0 ? LIGHT_SQ : DARK_SQ;
+      ctx.fillRect(miniX + c * miniSq, miniY + r * miniSq, miniSq, miniSq);
+    }
+  }
+
+  // Instructions box
+  let boxW = Math.min(320, W - 40);
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  roundRect((W - boxW) / 2, H * 0.62, boxW, 90, 12);
+  ctx.fill();
+
+  let instrFs = Math.min(18, W * 0.04);
+  ctx.fillStyle = '#333';
+  ctx.font = 'bold ' + instrFs + 'px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Tap a piece to see moves!', W / 2, H * 0.62 + 28);
+  ctx.fillText('Tap where to go!', W / 2, H * 0.62 + 52);
+  ctx.fillText('Capture all the bad guys!', W / 2, H * 0.62 + 76);
+
+  // Tap to start (flashing)
+  if (Math.sin(titlePulse * 3) > 0) {
+    ctx.fillStyle = '#FFF';
+    ctx.font = 'bold ' + Math.min(28, W * 0.06) + 'px sans-serif';
+    ctx.fillText('TAP TO PLAY!', W / 2, H * 0.85);
+  }
+
+  // Credits
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.font = Math.max(11, Math.min(14, W * 0.035)) + 'px sans-serif';
+  ctx.fillText('Made by Areli', W / 2, H * 0.93);
+  ctx.font = Math.max(10, Math.min(11, W * 0.025)) + 'px sans-serif';
+  ctx.fillText('Yoel The G Platform', W / 2, H * 0.96);
+}
+
+// ============================================================
+// GAME OVER SCREEN
+// ============================================================
+function drawGameOverScreen() {
+  drawBackground();
+  drawBoard();
+  drawPieces();
+
+  // Overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, W, H);
+
+  let boxW = Math.min(340, W - 30);
+  let boxH = 260;
+  let bx = (W - boxW) / 2, by = (H - boxH) / 2;
+
+  ctx.fillStyle = theme.surface || '#FFF';
+  ctx.globalAlpha = 0.95;
+  roundRect(bx, by, boxW, boxH, 16);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  let fs = Math.min(22, W * 0.05);
+  ctx.textAlign = 'center';
+
+  // Result
+  let resultText = gameMessage;
+  ctx.fillStyle = gameMessage.includes('Win') ? '#4CAF50' : (gameMessage.includes('Draw') ? '#FF9800' : '#FF4444');
+  ctx.font = 'bold ' + (fs + 8) + 'px sans-serif';
+  ctx.fillText(resultText, W / 2, by + 50);
+
+  // Subtitle
+  ctx.fillStyle = theme.text || '#333';
+  ctx.font = fs + 'px sans-serif';
+  if (gameMessage.includes('Win')) {
+    ctx.fillText('Ohana means family!', W / 2, by + 85);
+  } else {
+    ctx.fillText('Try again!', W / 2, by + 85);
+  }
+
+  // Score
+  ctx.fillStyle = '#FFD700';
+  ctx.font = 'bold ' + (fs + 4) + 'px sans-serif';
+  ctx.fillText('Score: ' + score, W / 2, by + 130);
+
+  ctx.fillStyle = theme.text || '#333';
+  ctx.font = fs + 'px sans-serif';
+  ctx.fillText('Level: ' + level, W / 2, by + 165);
+
+  // Mini Stitch
+  ctx.save();
+  let sb = Math.sin(titlePulse * 2) * 4;
+  drawStitch(W / 2, by + 200 + sb, 22);
+  ctx.restore();
+
+  // Play again
+  if (Math.sin(titlePulse * 3) > 0) {
+    ctx.fillStyle = theme.primary || '#3b82f6';
+    ctx.font = 'bold ' + (fs + 2) + 'px sans-serif';
+    ctx.fillText('TAP TO PLAY AGAIN!', W / 2, by + boxH - 10);
+  }
+}
+
+// ============================================================
+// AI ENGINE
+// ============================================================
+function aiPickMove() {
+  if (!chess || chess.game_over()) return null;
+  let moves = chess.moves({ verbose: true });
+  if (moves.length === 0) return null;
+
+  if (level === 1) {
+    // Random
+    return moves[Math.floor(Math.random() * moves.length)];
+  }
+
+  if (level === 2) {
+    // Prefer captures, then random
+    let captures = moves.filter(m => m.captured);
+    if (captures.length > 0 && Math.random() < 0.7) {
+      // Pick highest value capture
+      captures.sort((a, b) => (PIECE_VALUES[b.captured] || 0) - (PIECE_VALUES[a.captured] || 0));
+      return captures[0];
+    }
+    return moves[Math.floor(Math.random() * moves.length)];
+  }
+
+  if (level === 3) {
+    // Simple 1-ply evaluation
+    let bestScore = -Infinity;
+    let bestMoves = [];
+    let vals = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+
+    for (let move of moves) {
+      chess.move(move.san);
+      let sc = 0;
+      let b = chess.board();
+      for (let row of b) {
+        for (let sq of row) {
+          if (sq) {
+            let v = vals[sq.type];
+            sc += sq.color === 'b' ? v : -v;
+          }
+        }
+      }
+      // Bonus for checks
+      if (chess.in_check()) sc += 0.5;
+      chess.undo();
+
+      if (sc > bestScore) {
+        bestScore = sc;
+        bestMoves = [move];
+      } else if (sc === bestScore) {
+        bestMoves.push(move);
+      }
+    }
+    return bestMoves[Math.floor(Math.random() * bestMoves.length)];
+  }
+
+  return moves[Math.floor(Math.random() * moves.length)];
+}
+
+// ============================================================
+// GAME LOGIC
+// ============================================================
+function startGame() {
+  chess = new Chess();
+  state = 'playing';
+  score = 0;
+  timer = 0;
+  capturedByPlayer = [];
+  capturedByAI = [];
+  selectedSquare = null;
+  validMoves = [];
+  lastMoveFrom = null;
+  lastMoveTo = null;
+  checkSquare = null;
+  gameMessage = '';
+  messageTimer = 0;
+  moveAnim = null;
+  particles = [];
+  floatingTexts = [];
+}
+
+function resetGame() {
+  state = 'start';
+}
+
+function selectSquare(sq) {
+  if (state !== 'playing') return;
+  if (chess.turn() !== 'w') return; // Not player's turn
+
+  let board = chess.board();
+  let col = sq.charCodeAt(0) - 97;
+  let row = 8 - parseInt(sq[1]);
+  let piece = board[row][col];
+
+  // If clicking on a valid move destination
+  if (selectedSquare && validMoves.some(m => m.to === sq)) {
+    makePlayerMove(selectedSquare, sq);
+    return;
+  }
+
+  // If clicking own piece, select it
+  if (piece && piece.color === 'w') {
+    selectedSquare = sq;
+    validMoves = chess.moves({ square: sq, verbose: true });
+    playSound('select');
+    return;
+  }
+
+  // Clicking empty or opponent piece with no valid move
+  if (selectedSquare) {
+    playSound('invalid');
+  }
+  selectedSquare = null;
+  validMoves = [];
+}
+
+function makePlayerMove(from, to) {
+  let moveObj = { from: from, to: to };
+
+  // Check for pawn promotion
+  let board = chess.board();
+  let fromCol = from.charCodeAt(0) - 97;
+  let fromRow = 8 - parseInt(from[1]);
+  let piece = board[fromRow][fromCol];
+  if (piece && piece.type === 'p' && (to[1] === '8' || to[1] === '1')) {
+    moveObj.promotion = 'q';
+  }
+
+  // Animate
+  let fromScreen = squareToScreen(from);
+  let toScreen = squareToScreen(to);
+
+  let result = chess.move(moveObj);
+  if (!result) {
+    playSound('invalid');
+    selectedSquare = null;
+    validMoves = [];
+    return;
+  }
+
+  // Start animation
+  moveAnim = {
+    type: piece.type, color: piece.color,
+    fromX: fromScreen.x, fromY: fromScreen.y,
+    toX: toScreen.x, toY: toScreen.y,
+    toSq: to, progress: 0, duration: 0.25,
+    callback: function() {
+      afterPlayerMove(result);
+    }
+  };
+
+  // Undo the move visually (animation will show it, then re-apply)
+  // Actually, the move is already made in chess.js. The animation just moves the visual.
+  // We need to handle this differently - keep the move, just animate the visual
+
+  selectedSquare = null;
+  validMoves = [];
+  lastMoveFrom = from;
+  lastMoveTo = to;
+
+  if (result.captured) {
+    playSound('capture');
+    capturedByPlayer.push({ type: result.captured, color: 'b' });
+    let pts = PIECE_VALUES[result.captured] || 10;
+    score += pts;
+    scorePop = 0.3;
+    addFloat(toScreen.x, toScreen.y - 20, '+' + pts, '#FFD700');
+    spawnParticles(toScreen.x, toScreen.y, '#FF6347', 8);
+  } else {
+    playSound('move');
+  }
+}
+
+function afterPlayerMove(result) {
+  moveAnim = null;
+  updateCheckState();
+
+  if (chess.game_over()) {
+    endGame();
+    return;
+  }
+
+  // AI turn
+  state = 'thinking';
+  aiDelay = 0.5 + Math.random() * 0.5;
+}
+
+function doAIMove() {
+  let move = aiPickMove();
+  if (!move) return;
+
+  let fromScreen = squareToScreen(move.from);
+  let toScreen = squareToScreen(move.to);
+
+  let board = chess.board();
+  let fromCol = move.from.charCodeAt(0) - 97;
+  let fromRow = 8 - parseInt(move.from[1]);
+  let piece = board[fromRow][fromCol];
+
+  let result = chess.move(move.san);
+  if (!result) {
+    // Fallback: try with object notation
+    let moveObj = { from: move.from, to: move.to };
+    if (move.promotion) moveObj.promotion = move.promotion;
+    result = chess.move(moveObj);
+  }
+  if (!result) { state = 'playing'; return; }
+
+  lastMoveFrom = move.from;
+  lastMoveTo = move.to;
+
+  moveAnim = {
+    type: piece.type, color: piece.color,
+    fromX: fromScreen.x, fromY: fromScreen.y,
+    toX: toScreen.x, toY: toScreen.y,
+    toSq: move.to, progress: 0, duration: 0.3,
+    callback: function() {
+      moveAnim = null;
+      if (result.captured) {
+        playSound('capture');
+        capturedByAI.push({ type: result.captured, color: 'w' });
+        spawnParticles(toScreen.x, toScreen.y, '#4169E1', 6);
+      } else {
+        playSound('move');
+      }
+      updateCheckState();
+      if (chess.game_over()) {
+        endGame();
+      } else {
+        state = 'playing';
+      }
+    }
+  };
+}
+
+function updateCheckState() {
+  checkSquare = null;
+  if (chess.in_check()) {
+    // Find the king of the side to move
+    let board = chess.board();
+    let turn = chess.turn();
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        let p = board[r][c];
+        if (p && p.type === 'k' && p.color === turn) {
+          checkSquare = String.fromCharCode(97 + c) + (8 - r);
+          break;
+        }
+      }
+    }
+    playSound('check');
+    showMessage('Check!');
+  }
+}
+
+function endGame() {
+  state = 'gameover';
+  if (chess.in_checkmate()) {
+    if (chess.turn() === 'b') {
+      gameMessage = 'You Win!';
+      score += 100 * level;
+      playSound('gameover');
+      // Level up
+      if (level < maxLevel) level++;
+    } else {
+      gameMessage = 'You Lose!';
+      playSound('lose');
+    }
+  } else if (chess.in_stalemate()) {
+    gameMessage = 'Draw - Stalemate!';
+    score += 25;
+    playSound('move');
+  } else if (chess.in_draw()) {
+    gameMessage = 'Draw!';
+    score += 25;
+    playSound('move');
+  } else {
+    gameMessage = 'Game Over!';
+  }
+  onGameOver(score);
+}
+
+function showMessage(msg) {
+  gameMessage = msg;
+  messageTimer = 1.5;
+}
+
+function undoMove() {
+  if (!chess || state !== 'playing') return;
+  if (chess.turn() !== 'w') return; // Only undo on player's turn
+
+  // Undo AI move and player move
+  let m1 = chess.undo(); // undo AI
+  let m2 = chess.undo(); // undo player
+  if (m1 && m1.captured) capturedByAI.pop();
+  if (m2 && m2.captured) {
+    capturedByPlayer.pop();
+    score = Math.max(0, score - (PIECE_VALUES[m2.captured] || 10));
+  }
+
+  selectedSquare = null;
+  validMoves = [];
+  checkSquare = null;
+  lastMoveFrom = null;
+  lastMoveTo = null;
+  playSound('move');
+}
+
+function squareToScreen(sq) {
+  let col = sq.charCodeAt(0) - 97;
+  let row = 8 - parseInt(sq[1]);
+  return {
+    x: boardX + col * sqSize + sqSize / 2,
+    y: boardY + row * sqSize + sqSize / 2
+  };
+}
+
+// ============================================================
+// INPUT HANDLING
+// ============================================================
+canvas.addEventListener('touchstart', function(e) {
+  e.preventDefault();
+  initAudio();
+  let t = e.changedTouches[0];
+  handleTap(t.clientX, t.clientY);
+}, { passive: false });
+
+canvas.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });
+canvas.addEventListener('touchcancel', function(e) {
+  e.preventDefault();
+  selectedSquare = null;
+  validMoves = [];
+}, { passive: false });
+
+canvas.addEventListener('mousedown', function(e) {
+  initAudio();
+  handleTap(e.clientX, e.clientY);
+});
+
+function handleTap(tx, ty) {
+  if (state === 'start') { startGame(); return; }
+  if (state === 'gameover') { startGame(); return; }
+
+  // Check undo button
+  let belowY = boardY + boardSize + 15;
+  let undoBtnX = 15, undoBtnY = belowY + 25, undoBtnW = 80, undoBtnH = 44;
+  if (tx >= undoBtnX && tx <= undoBtnX + undoBtnW && ty >= undoBtnY && ty <= undoBtnY + undoBtnH) {
+    undoMove();
+    return;
+  }
+
+  // Check mute button
+  let muteBtnX = W - 55, muteBtnY = belowY + 25, muteBtnW = 44, muteBtnH = 44;
+  if (tx >= muteBtnX && tx <= muteBtnX + muteBtnW && ty >= muteBtnY && ty <= muteBtnY + muteBtnH) {
+    muted = !muted;
+    return;
+  }
+
+  // Board tap
+  if (tx >= boardX && tx < boardX + boardSize && ty >= boardY && ty < boardY + boardSize) {
+    let col = Math.floor((tx - boardX) / sqSize);
+    let row = Math.floor((ty - boardY) / sqSize);
+    if (col >= 0 && col < 8 && row >= 0 && row < 8) {
+      let sq = String.fromCharCode(97 + col) + (8 - row);
+      selectSquare(sq);
+    }
+  }
+}
+
+// Keyboard support
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'z' || e.key === 'Z') undoMove();
+  if (e.key === 'm' || e.key === 'M') muted = !muted;
+});
+
+// ============================================================
+// UPDATE
+// ============================================================
+function update(dt) {
+  titlePulse += dt;
+
+  if (scorePop > 0) scorePop -= dt;
+  if (messageTimer > 0) messageTimer -= dt;
+
+  // XP reporting
+  if (state === 'playing' || state === 'thinking') {
+    timer += dt;
+    xpTimer += dt;
+    if (xpTimer >= 60) { xpTimer -= 60; reportXP(); }
+  }
+
+  // Move animation
+  if (moveAnim) {
+    moveAnim.progress += dt / moveAnim.duration;
+    if (moveAnim.progress >= 1) {
+      moveAnim.progress = 1;
+      if (moveAnim.callback) moveAnim.callback();
+    }
+  }
+
+  // AI delay
+  if (state === 'thinking' && !moveAnim) {
+    aiDelay -= dt;
+    if (aiDelay <= 0) {
+      doAIMove();
+    }
+  }
+
+  updateParticles(dt);
+  updateFloatingTexts(dt);
+}
+
+// ============================================================
+// MAIN DRAW
+// ============================================================
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  if (state === 'start') {
+    drawStartScreen();
+    return;
+  }
+
+  if (state === 'gameover') {
+    drawGameOverScreen();
+    return;
+  }
+
+  // Playing / thinking states
+  drawBackground();
+  drawBoard();
+  drawPieces();
+  drawParticles();
+  drawFloatingTexts();
+  drawHUD();
+}
+
+// ============================================================
+// GAME LOOP
+// ============================================================
+function gameLoop(timestamp) {
+  if (!lastTime) lastTime = timestamp;
+  let dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+  lastTime = timestamp;
+
+  update(dt);
+  draw();
+
+  requestAnimationFrame(gameLoop);
+}
+
+requestAnimationFrame(gameLoop);
+
+// Fallback: keep game ticking when tab/iframe is hidden (rAF pauses)
+setInterval(function() {
+  if (document.hidden && (moveAnim || state === 'thinking')) {
+    let now = performance.now();
+    if (!lastTime) lastTime = now;
+    let dt = Math.min((now - lastTime) / 1000, 0.05);
+    lastTime = now;
+    update(dt);
+    draw();
+  }
+}, 50);
+</script>
+</body>
+</html>

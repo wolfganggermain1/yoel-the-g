@@ -2,15 +2,30 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAuth } from '@/components/AdminGuard';
 
 const NAV_ITEMS = [
-  { href: '/admin', label: 'Dashboard', icon: '\u{1F4CA}' },
-  { href: '/admin/games', label: 'Games', icon: '\u{1F3AE}' },
-  { href: '/admin/developers', label: 'Developers', icon: '\u{1F468}\u{200D}\u{1F4BB}' },
+  { href: '/admin', label: 'Dashboard', icon: '\u{1F4CA}', minRole: 'outside_dev' },
+  { href: '/admin/games', label: 'Games', icon: '\u{1F3AE}', minRole: 'family_dev' },
+  { href: '/admin/developers', label: 'Developers', icon: '\u{1F468}\u{200D}\u{1F4BB}', minRole: 'admin' },
+  { href: '/admin/users', label: 'Users', icon: '\u{1F465}', minRole: 'super_admin' },
 ];
+
+const ROLE_HIERARCHY: Record<string, number> = {
+  super_admin: 4,
+  admin: 3,
+  family_dev: 2,
+  outside_dev: 1,
+};
 
 export default function AdminNav() {
   const pathname = usePathname();
+  const { user } = useAuth();
+
+  const userLevel = user ? (ROLE_HIERARCHY[user.role] ?? 0) : 0;
+  const visibleItems = NAV_ITEMS.filter(
+    (item) => userLevel >= (ROLE_HIERARCHY[item.minRole] ?? 0),
+  );
 
   return (
     <nav
@@ -33,7 +48,7 @@ export default function AdminNav() {
 
       {/* Nav links */}
       <ul className="flex md:flex-col gap-1 p-2 overflow-x-auto">
-        {NAV_ITEMS.map((item) => {
+        {visibleItems.map((item) => {
           const isActive =
             item.href === '/admin'
               ? pathname === '/admin'

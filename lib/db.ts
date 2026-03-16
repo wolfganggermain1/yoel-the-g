@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
+import bcrypt from "bcryptjs";
 
 const DB_PATH = path.join(process.cwd(), "data", "yoel-the-g.db");
 
@@ -51,7 +52,17 @@ function initializeDb(): void {
       age_min INTEGER DEFAULT 3,
       published INTEGER DEFAULT 0,
       play_count INTEGER DEFAULT 0,
+      player_count TEXT DEFAULT '1 Player',
+      controls TEXT DEFAULT 'Mouse / Touch',
+      features TEXT,
       created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS game_developers (
+      game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
+      developer_id INTEGER REFERENCES developers(id) ON DELETE CASCADE,
+      role TEXT DEFAULT 'co-author',
+      PRIMARY KEY (game_id, developer_id)
     );
 
     CREATE TABLE IF NOT EXISTS players (
@@ -70,6 +81,31 @@ function initializeDb(): void {
       xp_earned INTEGER DEFAULT 0,
       played_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'outside_dev'
+        CHECK(role IN ('super_admin', 'admin', 'family_dev', 'outside_dev')),
+      developer_id INTEGER REFERENCES developers(id),
+      is_family INTEGER DEFAULT 0,
+      must_change_password INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS fee_config (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fee_type TEXT UNIQUE NOT NULL
+        CHECK(fee_type IN ('game_generation', 'game_publishing')),
+      amount_cents INTEGER NOT NULL DEFAULT 0,
+      currency TEXT DEFAULT 'USD',
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // ---- Seed developers (idempotent) ----
@@ -80,98 +116,192 @@ function initializeDb(): void {
   insertDev.run("Yo\u00EBl", "yoel", "\uD83D\uDC51");
   insertDev.run("Ezekiel", "ezekiel", "\u26A1");
   insertDev.run("Areli", "areli", "\uD83E\uDD81");
+  insertDev.run("Chad", "chad", "\uD83D\uDE0E");
 
-  // ---- Seed games (idempotent) ----
-  // Look up Yoël's developer ID for his games
+  // ---- Look up developer IDs ----
   const yoelDev = d.prepare("SELECT id FROM developers WHERE slug = 'yoel'").get() as { id: number } | undefined;
   const yoelId = yoelDev?.id ?? 1;
-
-  const insertGame = d.prepare(`
-    INSERT OR IGNORE INTO games
-      (title, slug, description, developer_id, thumbnail_emoji, game_path, category, published)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-  `);
-  insertGame.run(
-    "ROBLOX Simon Says",
-    "simon-says",
-    "Follow the pattern!",
-    yoelId,
-    "\uD83C\uDFB5",
-    "/games/simon-says/index.html",
-    "puzzle"
-  );
-  insertGame.run(
-    "MEGA ROBOT Sky Battle",
-    "robot-battle",
-    "Epic robot battle in the sky!",
-    yoelId,
-    "\uD83E\uDD16",
-    "/games/robot-battle/index.html",
-    "arcade"
-  );
-  insertGame.run(
-    "Remember Family",
-    "remember-family",
-    "Space adventure! Jump on platforms and collect stars!",
-    yoelId,
-    "\uD83D\uDE80",
-    "/games/remember-family/index.html",
-    "adventure"
-  );
-  insertGame.run(
-    "Pilot Tollt",
-    "pilot-tollt",
-    "Fly your jet over the city and pop the baddies with star blasts!",
-    yoelId,
-    "\u2708\uFE0F",
-    "/games/pilot-tollt/index.html",
-    "arcade"
-  );
-
-  insertGame.run(
-    "LOTI IT0",
-    "loti-it0",
-    "Draw before the timer runs out! Pick colors, stamps and brushes to create city art!",
-    yoelId,
-    "\uD83C\uDFA8",
-    "/games/loti-it0/index.html",
-    "creative"
-  );
-
-  insertGame.run(
-    "Cute Rescue",
-    "cute-rescue",
-    "Shoot magic at fantasy creatures and capture the Gold Bar to complete each level!",
-    yoelId,
-    "\u2728",
-    "/games/cute-rescue/index.html",
-    "arcade"
-  );
-
-  // ---- Seed Ezekiel's games ----
   const ezekielDev = d.prepare("SELECT id FROM developers WHERE slug = 'ezekiel'").get() as { id: number } | undefined;
   const ezekielId = ezekielDev?.id ?? 2;
+  const areliDev = d.prepare("SELECT id FROM developers WHERE slug = 'areli'").get() as { id: number } | undefined;
+  const areliId = areliDev?.id ?? 3;
+  const chadDev = d.prepare("SELECT id FROM developers WHERE slug = 'chad'").get() as { id: number } | undefined;
+  const chadId = chadDev?.id ?? 4;
 
-  insertGame.run(
-    "Zombie Road Blaster",
-    "loto",
-    "Blast fun zombies with water balloons, fly your car and use autopilot! (with Yo\u00EBl)",
-    ezekielId,
-    "\uD83D\uDE97",
-    "/games/loto/index.html",
-    "arcade"
+  // ---- Seed games (idempotent) ----
+  const insertGame = d.prepare(`
+    INSERT OR IGNORE INTO games
+      (title, slug, description, developer_id, thumbnail_emoji, game_path, category, player_count, controls, features, published)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+  `);
+
+  const insertGameDev = d.prepare(`
+    INSERT OR IGNORE INTO game_developers (game_id, developer_id, role)
+    VALUES (?, ?, ?)
+  `);
+
+  // Helper: seed a game and its co-authors
+  function seedGame(
+    title: string, slug: string, description: string,
+    leadDevId: number, emoji: string, gamePath: string, category: string,
+    playerCount: string, controls: string, features: string[],
+    coAuthors: { devId: number; role: string }[]
+  ) {
+    insertGame.run(title, slug, description, leadDevId, emoji, gamePath, category, playerCount, controls, JSON.stringify(features));
+    const game = d.prepare("SELECT id FROM games WHERE slug = ?").get(slug) as { id: number } | undefined;
+    if (game) {
+      for (const author of coAuthors) {
+        insertGameDev.run(game.id, author.devId, author.role);
+      }
+    }
+  }
+
+  // --- Yoel's solo games ---
+  seedGame(
+    "Remember Family", "remember-family",
+    "Space adventure! Jump on platforms and collect stars!",
+    yoelId, "\uD83D\uDE80", "/games/remember-family/index.html", "adventure",
+    "1 Player", "Mouse / Touch", ["Score", "Levels"],
+    [{ devId: yoelId, role: "lead" }]
   );
 
-  // Also list under Yoël's games (same game file, different slug for DB uniqueness)
-  insertGame.run(
-    "Zombie Road Blaster",
-    "loto-yoel",
-    "Blast fun zombies with water balloons, fly your car and use autopilot! (with Ezekiel)",
-    yoelId,
-    "\uD83D\uDE97",
-    "/games/loto/index.html",
-    "arcade"
+  seedGame(
+    "Pilot Tollt", "pilot-tollt",
+    "Fly your jet over the city and pop the baddies with star blasts!",
+    yoelId, "\u2708\uFE0F", "/games/pilot-tollt/index.html", "arcade",
+    "1 Player", "Keyboard / Touch", ["Score", "Levels", "Sound"],
+    [{ devId: yoelId, role: "lead" }]
   );
+
+  seedGame(
+    "LOTI IT0", "loti-it0",
+    "Draw before the timer runs out! Pick colors, stamps and brushes to create city art!",
+    yoelId, "\uD83C\uDFA8", "/games/loti-it0/index.html", "creative",
+    "1 Player", "Mouse / Touch", ["Timer"],
+    [{ devId: yoelId, role: "lead" }]
+  );
+
+  seedGame(
+    "Cute Rescue", "cute-rescue",
+    "Shoot magic at fantasy creatures and capture the Gold Bar to complete each level!",
+    yoelId, "\u2728", "/games/cute-rescue/index.html", "arcade",
+    "1 Player", "Mouse / Touch", ["Score", "Levels", "Powerups"],
+    [{ devId: yoelId, role: "lead" }]
+  );
+
+  seedGame(
+    "Airplane Ocean Adventure", "airplane-ocean",
+    "Soar over the ocean in this exciting aerial adventure!",
+    yoelId, "\uD83C\uDF0A", "/games/airplane-ocean/index.html", "arcade",
+    "1 Player", "Keyboard / Touch", ["Score", "Sound"],
+    [{ devId: yoelId, role: "lead" }]
+  );
+
+  seedGame(
+    "Johnny Trigger Sniper 3D", "johnny-trigger-sniper-3d",
+    "Take aim and hit the targets in this action-packed sniper game!",
+    chadId, "\uD83C\uDFAF", "/games/johnny-trigger-sniper-3d/index.html", "arcade",
+    "1 Player", "Mouse / Touch", ["Score", "Levels"],
+    [{ devId: chadId, role: "lead" }]
+  );
+
+  // --- Co-authored games (Yoel + Ezekiel) ---
+  seedGame(
+    "ROBLOX Simon Says", "simon-says",
+    "Follow the pattern! A Roblox-themed Simon Says with epic sound effects and difficulty levels!",
+    yoelId, "\uD83C\uDFB5", "/games/simon-says/index.html", "puzzle",
+    "1 Player", "Mouse / Touch", ["Score", "Levels", "Sound"],
+    [{ devId: yoelId, role: "lead" }, { devId: ezekielId, role: "co-author" }]
+  );
+
+  seedGame(
+    "MEGA ROBOT Sky Battle", "robot-battle",
+    "Epic robot battle in the sky! Futuristic neon combat action!",
+    yoelId, "\uD83E\uDD16", "/games/robot-battle/index.html", "arcade",
+    "1 Player", "Mouse / Touch", ["Score", "Levels", "Powerups"],
+    [{ devId: yoelId, role: "lead" }, { devId: ezekielId, role: "co-author" }]
+  );
+
+  seedGame(
+    "Zombie Road Blaster", "loto",
+    "Blast fun zombies with water balloons, fly your car and use autopilot!",
+    ezekielId, "\uD83D\uDE97", "/games/loto/index.html", "arcade",
+    "1 Player", "Mouse / Touch", ["Score", "Powerups", "Sound"],
+    [{ devId: ezekielId, role: "lead" }, { devId: yoelId, role: "co-author" }]
+  );
+
+  // --- Ezekiel's solo game ---
+  seedGame(
+    "Sky Battle", "sky-battle",
+    "Epic bird vs airplane sky battle!",
+    ezekielId, "\uD83E\uDD85", "/games/sky-battle/index.html", "arcade",
+    "1 Player", "Mouse / Touch", ["Score"],
+    [{ devId: ezekielId, role: "lead" }]
+  );
+
+  // --- Areli's games ---
+  seedGame(
+    "Lilo & Stitch Chess", "lilo-stitch-chess",
+    "Play chess with Lilo & Stitch characters!",
+    areliId, "\u265F\uFE0F", "/games/lilo-stitch-chess/index.html", "strategy",
+    "2 Players", "Mouse / Touch", ["Score"],
+    [{ devId: areliId, role: "lead" }, { devId: yoelId, role: "co-author" }]
+  );
+
+  seedGame(
+    "Sparkle Shop", "sparkle-shop",
+    "Run your own sparkle shop in this fun cashier idle clicker game!",
+    areliId, "\u2728", "/games/sparkle-shop/index.html", "creative",
+    "1 Player", "Mouse / Touch", ["Score", "Levels"],
+    [{ devId: areliId, role: "lead" }]
+  );
+
+  // ---- Migrate: consolidate Yoel's email to yoeltheg7@gmail.com ----
+  const newYoel = d.prepare("SELECT id FROM users WHERE email = 'yoeltheg7@gmail.com'").get();
+  if (newYoel) {
+    // New email already exists, remove the old one
+    d.prepare("DELETE FROM users WHERE email = 'yoel@yoeltheg.com'").run();
+  } else {
+    // Rename old email to new
+    d.prepare("UPDATE users SET email = 'yoeltheg7@gmail.com' WHERE email = 'yoel@yoeltheg.com'").run();
+  }
+
+  // ---- Seed family user accounts (idempotent) ----
+  const DEFAULT_PASSWORD = "changeme123";
+  const defaultHash = bcrypt.hashSync(DEFAULT_PASSWORD, 12);
+
+  const insertUser = d.prepare(`
+    INSERT OR IGNORE INTO users
+      (email, password_hash, display_name, role, developer_id, is_family, must_change_password)
+    VALUES (?, ?, ?, ?, ?, 1, 1)
+  `);
+
+  insertUser.run("yoeltheg7@gmail.com", defaultHash, "Yoel", "admin", yoelId);
+  insertUser.run("yoeltheg@gmail.com", defaultHash, "Yoel", "admin", yoelId);
+  insertUser.run("mia@yoeltheg.com", defaultHash, "Mia", "admin", null);
+  insertUser.run("ezekiel@yoeltheg.com", defaultHash, "Ezekiel", "family_dev", ezekielId);
+  insertUser.run("areli@yoeltheg.com", defaultHash, "Areli", "family_dev", areliId);
+  insertUser.run("wolfganggermain1@gmail.com", defaultHash, "Wolfgang", "super_admin", null);
+
+  // ---- Migrate roles: ensure Wolfgang is the only super_admin ----
+  d.prepare(`UPDATE users SET role = 'admin' WHERE email = 'yoeltheg7@gmail.com' AND role = 'super_admin'`).run();
+  d.prepare(`UPDATE users SET role = 'admin' WHERE email = 'yoeltheg@gmail.com' AND role = 'super_admin'`).run();
+
+  // ---- Seed outside developer accounts (idempotent) ----
+  const insertOutsideUser = d.prepare(`
+    INSERT OR IGNORE INTO users
+      (email, password_hash, display_name, role, developer_id, is_family, must_change_password)
+    VALUES (?, ?, ?, ?, ?, 0, 1)
+  `);
+  insertOutsideUser.run("chad@yoeltheg.com", defaultHash, "Chad", "outside_dev", chadId);
+
+  // ---- Seed fee configuration (idempotent) ----
+  const insertFee = d.prepare(`
+    INSERT OR IGNORE INTO fee_config (fee_type, amount_cents, currency, is_active)
+    VALUES (?, ?, 'USD', 1)
+  `);
+  insertFee.run("game_generation", 500);   // $5.00
+  insertFee.run("game_publishing", 1000);  // $10.00
 }
 
 // ---------------------------------------------------------------------------
@@ -199,7 +329,18 @@ export interface Game {
   age_min: number;
   published: number;
   play_count: number;
+  player_count: string;
+  controls: string;
+  features: string | null;
   created_at: string;
+}
+
+export interface GameDeveloper {
+  game_id: number;
+  developer_id: number;
+  role: string;
+  developer_name: string;
+  developer_emoji: string;
 }
 
 export interface Player {
@@ -225,6 +366,31 @@ export interface Stats {
   totalPlaySessions: number;
 }
 
+export type UserRole = "super_admin" | "admin" | "family_dev" | "outside_dev";
+
+export interface User {
+  id: number;
+  email: string;
+  password_hash: string;
+  display_name: string;
+  role: UserRole;
+  developer_id: number | null;
+  is_family: number;
+  must_change_password: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FeeConfig {
+  id: number;
+  fee_type: "game_generation" | "game_publishing";
+  amount_cents: number;
+  currency: string;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AddGameData {
   title: string;
   slug: string;
@@ -235,6 +401,9 @@ export interface AddGameData {
   category?: string;
   age_min?: number;
   published?: number;
+  player_count?: string;
+  controls?: string;
+  features?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -273,8 +442,27 @@ export function removeDeveloper(id: number): Database.RunResult {
 
 export function getGamesByDeveloper(developerId: number): Game[] {
   return getDb()
-    .prepare("SELECT * FROM games WHERE developer_id = ? ORDER BY title")
-    .all(developerId) as Game[];
+    .prepare(
+      `SELECT DISTINCT g.* FROM games g
+       LEFT JOIN game_developers gd ON g.id = gd.game_id
+       WHERE (g.developer_id = ? OR gd.developer_id = ?)
+       AND g.published = 1
+       ORDER BY g.title`
+    )
+    .all(developerId, developerId) as Game[];
+}
+
+export function getDevelopersForGame(gameId: number): GameDeveloper[] {
+  return getDb()
+    .prepare(
+      `SELECT gd.game_id, gd.developer_id, gd.role,
+              d.name as developer_name, d.avatar_emoji as developer_emoji
+       FROM game_developers gd
+       JOIN developers d ON gd.developer_id = d.id
+       WHERE gd.game_id = ?
+       ORDER BY CASE gd.role WHEN 'lead' THEN 0 WHEN 'co-author' THEN 1 ELSE 2 END`
+    )
+    .all(gameId) as GameDeveloper[];
 }
 
 export function getAllPublishedGames(): Game[] {
@@ -293,8 +481,8 @@ export function addGame(data: AddGameData): Database.RunResult {
   return getDb()
     .prepare(
       `INSERT INTO games
-        (title, slug, description, developer_id, thumbnail_emoji, game_path, category, age_min, published)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (title, slug, description, developer_id, thumbnail_emoji, game_path, category, age_min, published, player_count, controls, features)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       data.title,
@@ -305,8 +493,17 @@ export function addGame(data: AddGameData): Database.RunResult {
       data.game_path,
       data.category ?? "arcade",
       data.age_min ?? 3,
-      data.published ?? 0
+      data.published ?? 0,
+      data.player_count ?? "1 Player",
+      data.controls ?? "Mouse / Touch",
+      data.features ? JSON.stringify(data.features) : null
     );
+}
+
+export function addGameDeveloper(gameId: number, developerId: number, role: string = "co-author"): Database.RunResult {
+  return getDb()
+    .prepare("INSERT OR IGNORE INTO game_developers (game_id, developer_id, role) VALUES (?, ?, ?)")
+    .run(gameId, developerId, role);
 }
 
 export function toggleGamePublished(id: number): Database.RunResult {
@@ -410,4 +607,92 @@ export function getStats(): Stats {
   const totalDevelopers = (d.prepare("SELECT COUNT(*) as c FROM developers").get() as { c: number }).c;
   const totalPlaySessions = (d.prepare("SELECT COUNT(*) as c FROM play_sessions").get() as { c: number }).c;
   return { totalGames, totalDevelopers, totalPlaySessions };
+}
+
+// ---------------------------------------------------------------------------
+// User queries
+// ---------------------------------------------------------------------------
+
+export function getUserByEmail(email: string): User | undefined {
+  return getDb()
+    .prepare("SELECT * FROM users WHERE email = ?")
+    .get(email) as User | undefined;
+}
+
+export function getUserById(id: number): User | undefined {
+  return getDb()
+    .prepare("SELECT * FROM users WHERE id = ?")
+    .get(id) as User | undefined;
+}
+
+export function getUserByDeveloperId(developerId: number): User | undefined {
+  return getDb()
+    .prepare("SELECT * FROM users WHERE developer_id = ?")
+    .get(developerId) as User | undefined;
+}
+
+export function getAllUsers(): User[] {
+  return getDb()
+    .prepare("SELECT * FROM users ORDER BY display_name")
+    .all() as User[];
+}
+
+export function createUser(
+  email: string,
+  passwordHash: string,
+  displayName: string,
+  role: UserRole,
+  developerId: number | null,
+  isFamily: boolean
+): Database.RunResult {
+  return getDb()
+    .prepare(
+      `INSERT INTO users (email, password_hash, display_name, role, developer_id, is_family, must_change_password)
+       VALUES (?, ?, ?, ?, ?, ?, 1)`
+    )
+    .run(email, passwordHash, displayName, role, developerId, isFamily ? 1 : 0);
+}
+
+export function updateUserRole(id: number, role: UserRole): Database.RunResult {
+  return getDb()
+    .prepare("UPDATE users SET role = ?, updated_at = datetime('now') WHERE id = ?")
+    .run(role, id);
+}
+
+export function updateUserPassword(id: number, passwordHash: string): Database.RunResult {
+  return getDb()
+    .prepare("UPDATE users SET password_hash = ?, must_change_password = 0, updated_at = datetime('now') WHERE id = ?")
+    .run(passwordHash, id);
+}
+
+export function resetUserPassword(id: number, passwordHash: string): Database.RunResult {
+  return getDb()
+    .prepare("UPDATE users SET password_hash = ?, must_change_password = 1, updated_at = datetime('now') WHERE id = ?")
+    .run(passwordHash, id);
+}
+
+export function deleteUser(id: number): Database.RunResult {
+  return getDb()
+    .prepare("DELETE FROM users WHERE id = ?")
+    .run(id);
+}
+
+// ---------------------------------------------------------------------------
+// Fee config queries
+// ---------------------------------------------------------------------------
+
+export function getFeeConfig(): FeeConfig[] {
+  return getDb()
+    .prepare("SELECT * FROM fee_config ORDER BY fee_type")
+    .all() as FeeConfig[];
+}
+
+export function updateFeeConfig(
+  feeType: string,
+  amountCents: number,
+  isActive: boolean
+): Database.RunResult {
+  return getDb()
+    .prepare("UPDATE fee_config SET amount_cents = ?, is_active = ?, updated_at = datetime('now') WHERE fee_type = ?")
+    .run(amountCents, isActive ? 1 : 0, feeType);
 }

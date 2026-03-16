@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, FormEvent, useCallback } from 'react';
+import { useAuth } from '@/components/AdminGuard';
 
 interface Game {
   id: number;
@@ -35,6 +36,10 @@ const CATEGORIES = [
 ];
 
 export default function AdminGamesPage() {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === 'super_admin';
+  const isAdminOrAbove = user?.role === 'super_admin' || user?.role === 'admin';
+
   const [games, setGames] = useState<Game[]>([]);
   const [developers, setDevelopers] = useState<Developer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -110,7 +115,7 @@ export default function AdminGamesPage() {
     setUploadSuccess('');
 
     if (!file) {
-      setUploadError('Please select an HTML file.');
+      setUploadError('Please select an HTML or ZIP file.');
       return;
     }
     if (!title.trim()) {
@@ -387,17 +392,22 @@ export default function AdminGamesPage() {
           {/* File upload */}
           <div>
             <label htmlFor="game-file" className="block text-sm font-medium mb-1" style={{ color: 'var(--text)' }}>
-              HTML Game File * (.html, max 5MB)
+              Game File * (.html or .zip, max 25MB)
             </label>
             <input
               id="game-file"
               type="file"
-              accept=".html,.htm"
+              accept=".html,.htm,.zip"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               required
               className="w-full px-3 py-2 rounded-lg text-sm"
               style={inputStyle}
             />
+            {file && (
+              <p className="text-xs mt-1 opacity-40" style={{ color: 'var(--text)' }}>
+                {file.name.endsWith('.zip') ? 'ZIP archive' : 'HTML file'} ({(file.size / (1024 * 1024)).toFixed(1)} MB)
+              </p>
+            )}
           </div>
 
           {uploadError && (
@@ -512,34 +522,38 @@ export default function AdminGamesPage() {
                   >
                     {'\u{270F}\u{FE0F}'}
                   </button>
-                  {/* Toggle publish */}
-                  <button
-                    onClick={() => handleTogglePublish(game.id)}
-                    className="p-2 rounded-lg text-sm hover:opacity-80 transition-opacity cursor-pointer"
-                    style={{
-                      backgroundColor: 'var(--surface)',
-                      border: '1px solid var(--border)',
-                      color: 'var(--text)',
-                    }}
-                    title={game.published ? 'Unpublish' : 'Publish'}
-                    aria-label={game.published ? 'Unpublish game' : 'Publish game'}
-                  >
-                    {game.published ? '\u{1F441}' : '\u{1F648}'}
-                  </button>
-                  {/* Delete */}
-                  <button
-                    onClick={() => handleDelete(game.id, game.title)}
-                    className="p-2 rounded-lg text-sm hover:opacity-80 transition-opacity cursor-pointer"
-                    style={{
-                      backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                      color: '#ef4444',
-                    }}
-                    title="Delete game"
-                    aria-label="Delete game"
-                  >
-                    {'\u{1F5D1}'}
-                  </button>
+                  {/* Toggle publish - super_admin only */}
+                  {isSuperAdmin && (
+                    <button
+                      onClick={() => handleTogglePublish(game.id)}
+                      className="p-2 rounded-lg text-sm hover:opacity-80 transition-opacity cursor-pointer"
+                      style={{
+                        backgroundColor: 'var(--surface)',
+                        border: '1px solid var(--border)',
+                        color: 'var(--text)',
+                      }}
+                      title={game.published ? 'Unpublish' : 'Publish'}
+                      aria-label={game.published ? 'Unpublish game' : 'Publish game'}
+                    >
+                      {game.published ? '\u{1F441}' : '\u{1F648}'}
+                    </button>
+                  )}
+                  {/* Delete - admin+ only */}
+                  {isAdminOrAbove && (
+                    <button
+                      onClick={() => handleDelete(game.id, game.title)}
+                      className="p-2 rounded-lg text-sm hover:opacity-80 transition-opacity cursor-pointer"
+                      style={{
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        color: '#ef4444',
+                      }}
+                      title="Delete game"
+                      aria-label="Delete game"
+                    >
+                      {'\u{1F5D1}'}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -712,11 +726,11 @@ export default function AdminGamesPage() {
               {/* Re-upload file */}
               <div>
                 <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text)' }}>
-                  Replace Game File (optional, .html, max 5MB)
+                  Replace Game File (optional, .html or .zip)
                 </label>
                 <input
                   type="file"
-                  accept=".html,.htm"
+                  accept=".html,.htm,.zip"
                   onChange={(e) => setEditFile(e.target.files?.[0] ?? null)}
                   className="w-full px-3 py-2 rounded-lg text-sm"
                   style={inputStyle}

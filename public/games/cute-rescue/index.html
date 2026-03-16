@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Cute Rescue</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { width: 100%; height: 100%; overflow: hidden; background: #000; touch-action: none; }
-canvas { display: block; width: 100vw; height: 100vh; }
+canvas { display: block; width: 100vw; height: 100vh; height: 100dvh; touch-action: none; }
 </style>
 </head>
 <body>
@@ -36,12 +36,14 @@ function onGameOver(finalScore) { try { window.parent.postMessage({ type: 'gameO
 // ============================================================
 const canvas = document.getElementById('gc');
 const ctx = canvas.getContext('2d');
-let W, H, scale;
+let W, H, scale, isMobile;
 
 function resize() {
   W = canvas.width = window.innerWidth;
   H = canvas.height = window.innerHeight;
   scale = Math.min(W / 400, H / 700);
+  isMobile = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+  initBackground();
 }
 resize();
 window.addEventListener('resize', resize);
@@ -770,7 +772,7 @@ function drawPowerUps() {
     ctx.shadowBlur = 0;
 
     ctx.fillStyle = '#fff';
-    ctx.font = `bold ${14}px sans-serif`;
+    ctx.font = `bold ${Math.max(12, Math.floor(14 * scale))}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(PU_ICONS[p.type], p.x, p.y);
@@ -1093,7 +1095,7 @@ function drawHUD() {
       ctx.strokeStyle = 'rgba(255,255,255,0.5)';
       ctx.strokeRect(W - 100, puY, 80, 12);
       ctx.fillStyle = '#fff';
-      ctx.font = '10px sans-serif';
+      ctx.font = `${Math.max(12, Math.floor(14 * scale))}px sans-serif`;
       ctx.textAlign = 'right';
       ctx.fillText(key.toUpperCase(), W - 105, puY + 10);
       puY += 18;
@@ -1116,11 +1118,11 @@ function drawHeart(x, y, size) {
 }
 
 // Mute button
-const muteBtn = { x: 0, y: 0, r: 18 };
+const muteBtn = { x: 0, y: 0, r: 22 };
 
 function drawMuteButton() {
-  muteBtn.x = W - 28;
-  muteBtn.y = H - 30;
+  muteBtn.x = W - 32;
+  muteBtn.y = H - 70;
   ctx.fillStyle = 'rgba(255,255,255,0.15)';
   ctx.beginPath();
   ctx.arc(muteBtn.x, muteBtn.y, muteBtn.r, 0, Math.PI * 2);
@@ -1351,6 +1353,10 @@ canvas.addEventListener('touchend', (e) => {
   e.preventDefault();
   touchActive = false;
 }, { passive: false });
+
+canvas.addEventListener('touchcancel', (e) => {
+  touchActive = false;
+}, { passive: true });
 
 // Mouse events
 canvas.addEventListener('mousedown', (e) => {

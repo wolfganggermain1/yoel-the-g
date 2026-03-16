@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllPublishedGames, getDb } from '@/lib/db';
+import { getAllPublishedGames, getDb, getDevelopersForGame } from '@/lib/db';
 
 /**
  * GET /api/games
- * Returns all published games with developer info.
+ * Returns all published games with developer info and co-authors.
  */
 export async function GET() {
   try {
@@ -18,9 +18,15 @@ export async function GET() {
          WHERE g.published = 1
          ORDER BY g.play_count DESC`
       )
-      .all();
+      .all() as (Record<string, unknown> & { id: number })[];
 
-    return NextResponse.json({ games });
+    // Attach co-authors to each game
+    const gamesWithAuthors = games.map(game => ({
+      ...game,
+      authors: getDevelopersForGame(game.id),
+    }));
+
+    return NextResponse.json({ games: gamesWithAuthors });
   } catch (error) {
     // Fallback: try getAllPublishedGames without developer join
     try {

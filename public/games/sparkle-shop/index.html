@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Sparkle Shop</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Press Start 2P', monospace;
+    background: #1a1030;
+    height: 100vh; height: 100dvh; overflow: hidden;
+    display: flex; flex-direction: column;
+    user-select: none; -webkit-tap-highlight-color: transparent;
+    image-rendering: pixelated;
+    overscroll-behavior: none;
+  }
+
+  /* ---- TOP BAR ---- */
+  .topbar {
+    background: linear-gradient(180deg, #2d1b69, #1a1030);
+    padding: 8px 12px;
+    display: flex; justify-content: center; align-items: center; gap: 12px;
+    flex-wrap: wrap; border-bottom: 4px solid #7c3aed;
+  }
+  .money-box {
+    background: #7c3aed; color: #fff;
+    padding: 6px 18px; border-radius: 4px;
+    font-size: 14px; letter-spacing: 1px;
+    border: 3px solid #a78bfa;
+    box-shadow: 0 0 12px rgba(124,58,237,.5);
+  }
+  .stat {
+    color: #c4b5fd; font-size: 12px;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .dot { width:8px;height:8px;border-radius:2px;display:inline-block; }
+  .dot-gold { background:#fbbf24; }
+  .dot-green { background:#34d399; }
+  .dot-blue { background:#60a5fa; }
+
+  /* ---- GAME SCENE ---- */
+  .scene {
+    flex: 1; position: relative; overflow: hidden;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  /* Sky / Wall */
+  .wall {
+    position: absolute; top:0; left:0; right:0; height: 55%;
+    background: linear-gradient(180deg, #2e1065, #4c1d95, #6d28d9);
+  }
+  /* Wall pattern - pixel bricks */
+  .wall::after {
+    content:''; position:absolute; top:0;left:0;right:0;bottom:0;
+    background:
+      repeating-linear-gradient(90deg, transparent, transparent 48px, rgba(255,255,255,.04) 48px, rgba(255,255,255,.04) 50px),
+      repeating-linear-gradient(0deg, transparent, transparent 24px, rgba(255,255,255,.03) 24px, rgba(255,255,255,.03) 26px);
+  }
+
+  /* Shelves */
+  .shelf {
+    position: absolute; height: 8px;
+    background: #a78bfa;
+    border-bottom: 4px solid #7c3aed;
+    z-index: 2;
+  }
+  .shelf-items {
+    position: absolute; bottom: 4px;
+    display: flex; gap: 6px; padding: 0 6px;
+  }
+  /* Pixel items on shelves */
+  .pitem {
+    width: 14px; height: 14px; border-radius: 2px;
+    border: 2px solid rgba(0,0,0,.2);
+  }
+
+  /* Counter */
+  .counter-area {
+    position: absolute; bottom: 38%; left: 0; right: 0; height: 40px;
+    background: linear-gradient(180deg, #8b5cf6, #7c3aed);
+    border-top: 4px solid #a78bfa;
+    border-bottom: 4px solid #6d28d9;
+    z-index: 3;
+    display: flex; align-items: center; justify-content: space-around;
+    padding: 0 20px;
+  }
+  /* Register on counter */
+  .register-pixel {
+    width: 24px; height: 18px;
+    background: #ddd6fe; border: 2px solid #a78bfa;
+    border-radius: 2px; position: relative;
+  }
+  .register-pixel::after {
+    content:''; position:absolute; top:2px; left:3px;
+    width:16px; height:4px; background:#7c3aed; border-radius:1px;
+  }
+  .bag-pixel {
+    width: 16px; height: 18px;
+    background: #c084fc; border: 2px solid #a78bfa;
+    border-radius: 2px 2px 0 0;
+  }
+
+  /* Floor */
+  .floor-area {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 38%;
+    background: linear-gradient(180deg, #ddd6fe, #c4b5fd);
+    z-index: 1;
+  }
+  .floor-area::after {
+    content:''; position:absolute; top:0;left:0;right:0;bottom:0;
+    background:
+      repeating-linear-gradient(90deg, transparent, transparent 40px, rgba(124,58,237,.08) 40px, rgba(124,58,237,.08) 42px),
+      repeating-linear-gradient(0deg, transparent, transparent 40px, rgba(124,58,237,.06) 40px, rgba(124,58,237,.06) 42px);
+  }
+
+  /* Door */
+  .door {
+    position: absolute; right: 0; top: 10%; width: 36px; height: 52%;
+    background: linear-gradient(180deg, #4c1d95, #6d28d9);
+    border: 4px solid #a78bfa; border-right: none;
+    border-radius: 6px 0 0 6px; z-index: 2;
+  }
+  .door-handle {
+    position:absolute; right:8px; top:50%;
+    width:6px;height:6px;background:#fbbf24;border-radius:1px;
+  }
+
+  /* Window */
+  .window-frame {
+    position: absolute; left: 12%; top: 8%; width: 60px; height: 50px;
+    background: linear-gradient(180deg, #93c5fd, #60a5fa);
+    border: 4px solid #a78bfa; border-radius: 4px; z-index: 2;
+    overflow: hidden;
+  }
+  .window-frame::after {
+    content:''; position:absolute;
+    top:0; left:48%; width:4px; height:100%; background:#a78bfa;
+  }
+  .window-frame::before {
+    content:''; position:absolute;
+    top:48%; left:0; width:100%; height:4px; background:#a78bfa;
+  }
+
+  /* Stars on wall */
+  .pixel-star {
+    position:absolute; z-index:2;
+    width:6px;height:6px;background:#fbbf24;border-radius:1px;
+    animation: twinkle 2s ease-in-out infinite alternate;
+  }
+  @keyframes twinkle { 0%{opacity:.3;} 100%{opacity:1;} }
+
+  /* ---- PIXEL CHARACTERS ---- */
+  .px-char {
+    position: absolute; z-index: 10;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .px-char .px-sprite {
+    width: 24px; height: 36px; position: relative;
+    image-rendering: pixelated;
+  }
+  /* Head */
+  .px-head {
+    width: 16px; height: 14px; border-radius: 3px;
+    position: absolute; top: 0; left: 4px;
+    border: 2px solid rgba(0,0,0,.15);
+  }
+  /* Hair */
+  .px-hair {
+    width: 18px; height: 6px; border-radius: 2px 2px 0 0;
+    position: absolute; top: -2px; left: 3px;
+  }
+  /* Eyes */
+  .px-eyes {
+    position:absolute; top:6px; left:7px;
+    width:8px; display:flex; justify-content:space-between;
+  }
+  .px-eye { width:3px;height:3px;background:#1a1030;border-radius:1px; }
+  /* Body */
+  .px-body {
+    width: 18px; height: 12px; border-radius: 2px;
+    position: absolute; top: 14px; left: 3px;
+    border: 2px solid rgba(0,0,0,.1);
+  }
+  /* Legs */
+  .px-leg {
+    width: 6px; height: 10px; border-radius: 1px;
+    position: absolute; top: 26px;
+    border: 2px solid rgba(0,0,0,.1);
+  }
+  .px-leg-l { left: 4px; }
+  .px-leg-r { left: 14px; }
+
+  /* Name tag */
+  .px-name {
+    font-size: 9px; color: #fff;
+    background: rgba(124,58,237,.8);
+    padding: 1px 4px; border-radius: 2px;
+    margin-top: 1px; white-space: nowrap;
+    letter-spacing: 0;
+  }
+
+  /* Walk animation */
+  .px-char.walking .px-leg-l {
+    animation: legL .3s ease-in-out infinite alternate;
+  }
+  .px-char.walking .px-leg-r {
+    animation: legR .3s ease-in-out infinite alternate;
+  }
+  @keyframes legL {
+    0% { transform: rotate(-12deg); }
+    100% { transform: rotate(12deg); }
+  }
+  @keyframes legR {
+    0% { transform: rotate(12deg); }
+    100% { transform: rotate(-12deg); }
+  }
+
+  /* Carry item */
+  .px-carry {
+    position: absolute; top: -4px; right: -6px;
+    width: 10px; height: 10px; border-radius: 2px;
+    border: 2px solid rgba(0,0,0,.15);
+    animation: bob .4s ease-in-out infinite alternate;
+  }
+  @keyframes bob { 0%{transform:translateY(0);} 100%{transform:translateY(-3px);} }
+
+  /* ---- EFFECTS ---- */
+  .coin-pop {
+    position:absolute; pointer-events:none; z-index:50;
+    color: #fbbf24; font-size: 13px;
+    text-shadow: 2px 2px 0 #92400e, -1px -1px 0 #92400e;
+    animation: popUp 1s ease-out forwards;
+  }
+  @keyframes popUp {
+    0% { opacity:1; transform: translateY(0) scale(1); }
+    100% { opacity:0; transform: translateY(-50px) scale(1.3); }
+  }
+  .sparkle-dot {
+    position:absolute; pointer-events:none; z-index:50;
+    width:6px;height:6px;border-radius:1px;
+    animation: sparkleFade .6s ease-out forwards;
+  }
+  @keyframes sparkleFade {
+    0% { opacity:1; transform: scale(0); }
+    40% { opacity:1; transform: scale(1.5); }
+    100% { opacity:0; transform: scale(0.5) translateY(-20px); }
+  }
+
+  /* ---- NOTIFICATION ---- */
+  .notif {
+    position:fixed; top:10px; left:50%; z-index:200;
+    transform: translateX(-50%) translateY(-70px);
+    background: #7c3aed; color:#fff;
+    padding: 8px 20px; border-radius: 4px;
+    font-size: 12px; border: 3px solid #a78bfa;
+    box-shadow: 0 4px 20px rgba(124,58,237,.5);
+    transition: transform .4s cubic-bezier(.34,1.56,.64,1);
+    white-space: nowrap;
+  }
+  .notif.show { transform: translateX(-50%) translateY(0); }
+
+  /* ---- TAP HINT ---- */
+  .tap-hint {
+    position:absolute; z-index:20;
+    bottom: 42%; left:50%; transform:translateX(-50%);
+    color:#fff; font-size:11px; text-align:center;
+    animation: hintPulse 1.5s ease-in-out infinite;
+    pointer-events:none;
+    text-shadow: 1px 1px 0 #4c1d95;
+  }
+  @keyframes hintPulse {
+    0%,100%{opacity:.5;} 50%{opacity:1;}
+  }
+
+  /* ---- BOTTOM PANEL ---- */
+  .bottom-panel {
+    background: #1a1030;
+    border-top: 4px solid #7c3aed;
+    padding: 8px;
+    padding-bottom: env(safe-area-inset-bottom, 8px);
+    display: flex; gap: 6px;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .bottom-panel::-webkit-scrollbar { display:none; }
+
+  .hire-btn {
+    flex: 0 0 auto;
+    background: #2d1b69;
+    border: 3px solid #6d28d9;
+    border-radius: 6px;
+    padding: 8px 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: transform .12s;
+    min-width: 82px;
+    color: #c4b5fd;
+    touch-action: manipulation;
+  }
+  .hire-btn:active { transform: scale(.93); }
+  @media (hover: hover) {
+    .hire-btn:hover { border-color: #a78bfa; }
+  }
+  .hire-btn.cant { opacity: .35; pointer-events:none; }
+  .hire-btn.owned {
+    border-color: #34d399;
+    background: #1a2e1a;
+  }
+  .hire-btn .hb-preview {
+    width: 20px; height: 28px; margin: 0 auto 4px; position:relative;
+  }
+  .hire-btn .hb-head {
+    width:12px;height:10px;border-radius:2px;
+    position:absolute;top:0;left:4px;
+  }
+  .hire-btn .hb-body {
+    width:14px;height:8px;border-radius:2px;
+    position:absolute;top:10px;left:3px;
+  }
+  .hire-btn .hb-leg1, .hire-btn .hb-leg2 {
+    width:5px;height:7px;border-radius:1px;
+    position:absolute;top:18px;
+  }
+  .hire-btn .hb-leg1 { left:3px; }
+  .hire-btn .hb-leg2 { left:12px; }
+  .hire-btn .hb-name {
+    font-size: 9px; color: #e9d5ff;
+    margin-bottom: 2px;
+  }
+  .hire-btn .hb-cost {
+    font-size: 9px;
+    background: #7c3aed;
+    color: #fff;
+    padding: 2px 6px;
+    border-radius: 2px;
+    display: inline-block;
+  }
+  .hire-btn.owned .hb-cost {
+    background: #34d399; color: #1a2e1a;
+  }
+
+  /* Separator */
+  .sep {
+    flex:0 0 3px; background:#6d28d9; border-radius:2px; align-self:stretch;
+  }
+
+  @media (orientation: landscape) and (max-height: 500px) {
+    .bottom-panel { height: 80px; min-height: 80px; }
+    .scene { min-height: 150px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="notif" id="notif"></div>
+
+<div class="topbar">
+  <div class="money-box">$ <span id="money">0</span></div>
+  <div class="stat"><span class="dot dot-gold"></span> <span id="persec">0</span>/s</div>
+  <div class="stat"><span class="dot dot-blue"></span> Lv <span id="level">1</span></div>
+</div>
+
+<div class="scene" id="scene">
+  <!-- Wall -->
+  <div class="wall"></div>
+
+  <!-- Window -->
+  <div class="window-frame"></div>
+
+  <!-- Stars -->
+  <div id="starsContainer"></div>
+
+  <!-- Shelves -->
+  <div class="shelf" style="top:14%;left:35%;width:28%;">
+    <div class="shelf-items">
+      <div class="pitem" style="background:#f9a8d4;"></div>
+      <div class="pitem" style="background:#c084fc;"></div>
+      <div class="pitem" style="background:#93c5fd;"></div>
+      <div class="pitem" style="background:#fbbf24;"></div>
+    </div>
+  </div>
+  <div class="shelf" style="top:28%;left:6%;width:24%;">
+    <div class="shelf-items">
+      <div class="pitem" style="background:#a78bfa;"></div>
+      <div class="pitem" style="background:#f472b6;"></div>
+      <div class="pitem" style="background:#67e8f9;"></div>
+    </div>
+  </div>
+  <div class="shelf" style="top:28%;right:8%;width:22%;">
+    <div class="shelf-items">
+      <div class="pitem" style="background:#fde68a;"></div>
+      <div class="pitem" style="background:#d8b4fe;"></div>
+      <div class="pitem" style="background:#fca5a5;"></div>
+    </div>
+  </div>
+
+  <!-- Counter -->
+  <div class="counter-area">
+    <div class="register-pixel"></div>
+    <div class="bag-pixel"></div>
+    <div class="register-pixel"></div>
+    <div class="bag-pixel"></div>
+    <div class="register-pixel"></div>
+  </div>
+
+  <!-- Door -->
+  <div class="door"><div class="door-handle"></div></div>
+
+  <!-- Floor -->
+  <div class="floor-area"></div>
+
+  <!-- Tap hint -->
+  <div class="tap-hint" id="tapHint">Tap to serve!</div>
+
+  <!-- Shopkeeper (behind counter) -->
+  <div class="px-char" id="shopkeeper" style="z-index:4;"></div>
+</div>
+
+<div class="bottom-panel" id="panel"></div>
+
+<script>
+// ====== STATE ======
+const G = {
+  money:0, total:0, served:0,
+  level:1, xp:0, xpNeed:40,
+  tapPow:1, gMul:1, bMul:1,
+  workers:{}, upgrades:{}
+};
+
+// ====== COLORS for characters ======
+const SKIN = '#fde2c8';
+const CUST_COLORS = [
+  {hair:'#6d28d9',body:'#93c5fd',legs:'#7c3aed'},
+  {hair:'#db2777',body:'#f9a8d4',legs:'#be185d'},
+  {hair:'#1a1030',body:'#a78bfa',legs:'#4c1d95'},
+  {hair:'#92400e',body:'#fde68a',legs:'#a16207'},
+  {hair:'#be185d',body:'#c084fc',legs:'#7c3aed'},
+  {hair:'#1e40af',body:'#93c5fd',legs:'#1e3a8a'},
+  {hair:'#7c2d12',body:'#fdba74',legs:'#7c2d12'},
+];
+const ITEM_COLORS = ['#f9a8d4','#c084fc','#93c5fd','#fbbf24','#a78bfa','#f472b6','#67e8f9','#fde68a','#d8b4fe'];
+
+// ====== WORKER DATA ======
+const WORKERS = [
+  {id:'w1',name:'Lily',  cost:30,   earn:1,  spd:3000,hair:'#f472b6',body:'#fce7f3',legs:'#f9a8d4'},
+  {id:'w2',name:'Rose',  cost:150,  earn:3,  spd:2800,hair:'#e11d48',body:'#ffe4e6',legs:'#fda4af'},
+  {id:'w3',name:'Daisy', cost:600,  earn:8,  spd:2600,hair:'#fbbf24',body:'#fef9c3',legs:'#fde68a'},
+  {id:'w4',name:'Sophie',cost:2500, earn:20, spd:2400,hair:'#3b82f6',body:'#dbeafe',legs:'#93c5fd'},
+  {id:'w5',name:'Luna',  cost:10000,earn:50, spd:2200,hair:'#8b5cf6',body:'#ede9fe',legs:'#c4b5fd'},
+  {id:'b1',name:'Ruby',  cost:5000, earn:0,  spd:0,boss:true,hair:'#fbbf24',body:'#fef3c7',legs:'#fde68a',
+    desc:'2x all',apply:()=>{G.bMul*=2;}},
+  {id:'w6',name:'Stella',cost:50000, earn:120,spd:2000,hair:'#ec4899',body:'#fce7f3',legs:'#f9a8d4'},
+  {id:'w7',name:'Aria',  cost:200000,earn:300,spd:1800,hair:'#a78bfa',body:'#ede9fe',legs:'#ddd6fe'},
+  {id:'b2',name:'Queen', cost:100000,earn:0,  spd:0,boss:true,hair:'#fbbf24',body:'#fff7ed',legs:'#fed7aa',
+    desc:'3x all',apply:()=>{G.bMul*=3;}},
+];
+
+const UPGRADES = [
+  {id:'u1',name:'Big Tap',  cost:50,    hair:'#c084fc',body:'#ede9fe',legs:'#c4b5fd',apply:()=>{G.tapPow=2;}},
+  {id:'u2',name:'Sparkle',  cost:300,   hair:'#f472b6',body:'#fce7f3',legs:'#f9a8d4',apply:()=>{G.tapPow=5;}},
+  {id:'u3',name:'Music',    cost:1500,  hair:'#60a5fa',body:'#dbeafe',legs:'#93c5fd',apply:()=>{G.gMul*=1.5;}},
+  {id:'u4',name:'Decor',    cost:8000,  hair:'#a78bfa',body:'#ede9fe',legs:'#c4b5fd',apply:()=>{G.gMul*=2;}},
+  {id:'u5',name:'Mega Tap', cost:40000, hair:'#fbbf24',body:'#fef9c3',legs:'#fde68a',apply:()=>{G.tapPow=20;}},
+  {id:'u6',name:'VIP',      cost:200000,hair:'#ec4899',body:'#fce7f3',legs:'#f9a8d4',apply:()=>{G.gMul*=3;}},
+];
+
+// ====== SCENE ======
+const scene = document.getElementById('scene');
+let sw, sh;
+function measure() { const r=scene.getBoundingClientRect(); sw=r.width; sh=r.height; }
+measure();
+
+// ====== PIXEL CHARACTER CREATION ======
+function makeSprite(parent, colors, name) {
+  const el = document.createElement('div');
+  el.className = 'px-char';
+  el.innerHTML = `
+    <div class="px-sprite">
+      <div class="px-hair" style="background:${colors.hair}"></div>
+      <div class="px-head" style="background:${SKIN}">
+        <div class="px-eyes"><div class="px-eye"></div><div class="px-eye"></div></div>
+      </div>
+      <div class="px-body" style="background:${colors.body}"></div>
+      <div class="px-leg px-leg-l" style="background:${colors.legs}"></div>
+      <div class="px-leg px-leg-r" style="background:${colors.legs}"></div>
+    </div>
+    ${name ? `<div class="px-name">${name}</div>` : ''}
+  `;
+  parent.appendChild(el);
+  return el;
+}
+
+// ====== SHOPKEEPER ======
+function placeShopkeeper() {
+  measure();
+  const sk = document.getElementById('shopkeeper');
+  sk.innerHTML = `
+    <div class="px-sprite">
+      <div class="px-hair" style="background:#a78bfa"></div>
+      <div class="px-head" style="background:${SKIN}">
+        <div class="px-eyes"><div class="px-eye"></div><div class="px-eye"></div></div>
+      </div>
+      <div class="px-body" style="background:#ddd6fe"></div>
+      <div class="px-leg px-leg-l" style="background:#c4b5fd"></div>
+      <div class="px-leg px-leg-r" style="background:#c4b5fd"></div>
+    </div>
+    <div class="px-name">You</div>
+  `;
+  sk.style.left = (sw * 0.15) + 'px';
+  sk.style.top = (sh * 0.52) + 'px';
+}
+
+// ====== CHARACTERS ======
+let customers = [];
+let workerChars = {};
+
+function counterTop() { return sh * 0.55; }
+function floorZone() { return sh * 0.66 + Math.random() * sh * 0.2; }
+function shelfZone() { return sh * 0.12 + Math.random() * sh * 0.2; }
+function randX() { return 50 + Math.random() * (sw - 100); }
+
+class Char {
+  constructor(el) {
+    this.el = el;
+    this.x = 0; this.y = 0;
+    this.tx = 0; this.ty = 0;
+    this.spd = 1.2 + Math.random() * 0.6;
+    this.moving = false;
+    this.cb = null;
+  }
+  setPos(x,y) {
+    this.x=x; this.y=y;
+    this.el.style.left = x+'px';
+    this.el.style.top = y+'px';
+  }
+  moveTo(x,y,cb) {
+    this.tx=x; this.ty=y; this.moving=true; this.cb=cb;
+    this.el.classList.add('walking');
+    // flip
+    if (x < this.x) this.el.style.transform = 'scaleX(-1)';
+    else this.el.style.transform = '';
+  }
+  update() {
+    if (!this.moving) return;
+    const dx=this.tx-this.x, dy=this.ty-this.y;
+    const d=Math.sqrt(dx*dx+dy*dy);
+    if (d < 3) {
+      this.moving=false;
+      this.el.classList.remove('walking');
+      if (this.cb){this.cb();this.cb=null;}
+      return;
+    }
+    const s=Math.min(this.spd,d);
+    this.x+=dx/d*s; this.y+=dy/d*s;
+    this.el.style.left=this.x+'px';
+    this.el.style.top=this.y+'px';
+  }
+  addCarry(color) {
+    let c = this.el.querySelector('.px-carry');
+    if (!c) {
+      c = document.createElement('div');
+      c.className = 'px-carry';
+      this.el.querySelector('.px-sprite').appendChild(c);
+    }
+    c.style.background = color;
+    c.style.display = 'block';
+  }
+  dropCarry() {
+    const c = this.el.querySelector('.px-carry');
+    if (c) c.style.display = 'none';
+  }
+  remove() { this.el.remove(); }
+}
+
+// ====== CUSTOMERS ======
+function spawnCustomer() {
+  if (customers.length >= 5) return;
+  measure();
+  const col = CUST_COLORS[Math.floor(Math.random()*CUST_COLORS.length)];
+  const el = makeSprite(scene, col, '');
+  const c = new Char(el);
+  c.setPos(sw + 10, floorZone());
+  c.waiting = true;
+  c.moveTo(50 + Math.random()*(sw-120), counterTop()+20+Math.random()*20, ()=>{ c.waiting=true; });
+  customers.push(c);
+}
+
+function serveOneCustomer() {
+  const c = customers.find(x => x.waiting && !x.moving && !x.taken);
+  if (!c) return false;
+  c.waiting = false;
+  G.served++;
+  const earn = tapEarn();
+  addMoney(earn);
+  coinPop(c.x, c.y, earn);
+  doSparkle(c.x+10, c.y);
+  // customer leaves with a bag
+  setTimeout(()=>{
+    c.addCarry('#c084fc');
+    c.moveTo(sw+30, c.y, ()=>{
+      c.remove();
+      customers = customers.filter(x=>x!==c);
+    });
+  }, 250);
+  return true;
+}
+
+// ====== WORKERS ======
+function startWorker(w) {
+  measure();
+  const el = makeSprite(scene, {hair:w.hair,body:w.body,legs:w.legs}, w.name);
+  const c = new Char(el);
+  c.setPos(randX(), floorZone());
+  c.wData = w;
+  workerChars[w.id] = c;
+  workerLoop(c);
+}
+
+function workerLoop(c) {
+  const go = () => {
+    const cust = customers.find(x => x.waiting && !x.moving && !x.taken);
+    if (cust) {
+      cust.taken = true;
+      // go to shelf
+      c.moveTo(randX(), shelfZone(), ()=>{
+        // pick item
+        c.addCarry(ITEM_COLORS[Math.floor(Math.random()*ITEM_COLORS.length)]);
+        // go to customer
+        c.moveTo(cust.x - 20, cust.y, ()=>{
+          c.dropCarry();
+          const earn = workerEarn(c.wData);
+          addMoney(earn);
+          G.served++;
+          coinPop(cust.x, cust.y, earn);
+          doSparkle(cust.x, cust.y);
+          cust.waiting = false; cust.taken = false;
+          setTimeout(()=>{
+            cust.addCarry('#c084fc');
+            cust.moveTo(sw+30, cust.y, ()=>{
+              cust.remove();
+              customers = customers.filter(x=>x!==cust);
+            });
+          },200);
+          c.moveTo(randX(), floorZone(), ()=> setTimeout(go, 300));
+        });
+      });
+    } else {
+      c.moveTo(randX(), floorZone(), ()=> setTimeout(go, c.wData.spd/2));
+    }
+  };
+  setTimeout(go, 500+Math.random()*800);
+}
+
+// ====== EARNINGS ======
+function tapEarn() { return Math.floor(G.tapPow * G.gMul * G.bMul); }
+function workerEarn(w) { return Math.floor(w.earn * G.gMul * G.bMul); }
+function perSec() {
+  let t=0;
+  WORKERS.forEach(w=>{
+    if(G.workers[w.id]&&!w.boss) t += workerEarn(w)*(1000/w.spd);
+  });
+  return Math.round(t);
+}
+function addMoney(n) {
+  G.money+=n; G.total+=n;
+  G.xp += Math.max(1, Math.floor(n/4));
+  checkLevel();
+}
+function checkLevel() {
+  while(G.xp>=G.xpNeed){
+    G.xp-=G.xpNeed; G.level++;
+    G.xpNeed=Math.floor(G.xpNeed*1.35);
+    G.tapPow = Math.max(G.tapPow, Math.floor(G.level/2)+1);
+    notify('Level '+G.level+'!');
+  }
+}
+
+// ====== TAP ======
+scene.addEventListener('click', (e)=>{
+  measure();
+  const r = scene.getBoundingClientRect();
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+  const served = serveOneCustomer();
+  if(!served){
+    const earn = tapEarn();
+    addMoney(earn); G.served++;
+    coinPop(x,y,earn);
+    doSparkle(x,y);
+  }
+  document.getElementById('tapHint').style.display='none';
+  updateUI();
+});
+
+// ====== EFFECTS ======
+function coinPop(x,y,amt) {
+  const el = document.createElement('div');
+  el.className='coin-pop';
+  el.textContent='+$'+fmtN(amt);
+  el.style.left=x+'px'; el.style.top=y+'px';
+  scene.appendChild(el);
+  setTimeout(()=>el.remove(),1000);
+}
+function doSparkle(x,y) {
+  const cols=['#fbbf24','#a78bfa','#f472b6','#93c5fd','#c084fc'];
+  for(let i=0;i<4;i++){
+    const el=document.createElement('div');
+    el.className='sparkle-dot';
+    el.style.background=cols[Math.floor(Math.random()*cols.length)];
+    el.style.left=(x+Math.random()*30-15)+'px';
+    el.style.top=(y+Math.random()*30-15)+'px';
+    scene.appendChild(el);
+    setTimeout(()=>el.remove(),600);
+  }
+}
+function notify(text){
+  const el=document.getElementById('notif');
+  el.textContent=text;
+  el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),2000);
+}
+
+// ====== SHOP PANEL ======
+function renderPanel() {
+  const panel = document.getElementById('panel');
+  panel.innerHTML='';
+
+  WORKERS.forEach(w=>{
+    const owned=G.workers[w.id];
+    const afford=G.money>=w.cost;
+    const btn=document.createElement('div');
+    btn.className='hire-btn'+(owned?' owned':(!afford?' cant':''));
+    btn.innerHTML=`
+      <div class="hb-preview">
+        <div class="hb-head" style="background:${SKIN}"></div>
+        <div style="position:absolute;top:-2px;left:2px;width:16px;height:5px;border-radius:2px;background:${w.hair}"></div>
+        <div class="hb-body" style="background:${w.body}"></div>
+        <div class="hb-leg1" style="background:${w.legs}"></div>
+        <div class="hb-leg2" style="background:${w.legs}"></div>
+      </div>
+      <div class="hb-name">${w.name}${w.boss?' Boss':''}</div>
+      <div class="hb-cost">${owned?'Hired':'$'+fmtN(w.cost)}</div>
+    `;
+    if(!owned) btn.onclick=(e)=>{e.stopPropagation();buyWorker(w);};
+    panel.appendChild(btn);
+  });
+
+  panel.appendChild(Object.assign(document.createElement('div'),{className:'sep'}));
+
+  UPGRADES.forEach(u=>{
+    const owned=G.upgrades[u.id];
+    const afford=G.money>=u.cost;
+    const btn=document.createElement('div');
+    btn.className='hire-btn'+(owned?' owned':(!afford?' cant':''));
+    btn.innerHTML=`
+      <div class="hb-preview">
+        <div class="hb-head" style="background:${SKIN}"></div>
+        <div style="position:absolute;top:-2px;left:2px;width:16px;height:5px;border-radius:2px;background:${u.hair}"></div>
+        <div class="hb-body" style="background:${u.body}"></div>
+        <div class="hb-leg1" style="background:${u.legs}"></div>
+        <div class="hb-leg2" style="background:${u.legs}"></div>
+      </div>
+      <div class="hb-name">${u.name}</div>
+      <div class="hb-cost">${owned?'Got it':'$'+fmtN(u.cost)}</div>
+    `;
+    if(!owned) btn.onclick=(e)=>{e.stopPropagation();buyUpgrade(u);};
+    panel.appendChild(btn);
+  });
+}
+
+function buyWorker(w){
+  if(G.money<w.cost||G.workers[w.id])return;
+  G.money-=w.cost; G.workers[w.id]=true;
+  if(w.boss){ w.apply(); notify(w.name+' joined!'); }
+  else { startWorker(w); notify(w.name+' hired!'); }
+  updateUI();
+}
+function buyUpgrade(u){
+  if(G.money<u.cost||G.upgrades[u.id])return;
+  G.money-=u.cost; G.upgrades[u.id]=true;
+  u.apply(); notify(u.name+' unlocked!');
+  updateUI();
+}
+
+// ====== UI UPDATE ======
+function updateUI(){
+  document.getElementById('money').textContent=fmtN(Math.floor(G.money));
+  document.getElementById('persec').textContent=fmtN(perSec());
+  document.getElementById('level').textContent=G.level;
+  renderPanel();
+}
+
+// ====== GAME LOOP ======
+function loop(){
+  customers.forEach(c=>c.update());
+  Object.values(workerChars).forEach(c=>c.update());
+  requestAnimationFrame(loop);
+}
+
+// Spawns
+setInterval(()=>{ measure(); spawnCustomer(); }, 2200);
+
+// UI refresh
+setInterval(updateUI, 700);
+
+// ====== SAVE/LOAD ======
+function save(){ try{localStorage.setItem('ss3',JSON.stringify(G));}catch(e){} }
+function load(){
+  try{
+    const s=localStorage.getItem('ss3');
+    if(s){ Object.assign(G,JSON.parse(s));
+      UPGRADES.forEach(u=>{if(G.upgrades[u.id])u.apply();});
+      WORKERS.forEach(w=>{if(G.workers[w.id]){if(w.boss)w.apply();else startWorker(w);}});
+    }
+  }catch(e){}
+}
+setInterval(save,3000);
+
+// ====== STARS ======
+function makeStars(){
+  const c=document.getElementById('starsContainer');
+  for(let i=0;i<8;i++){
+    const s=document.createElement('div');
+    s.className='pixel-star';
+    s.style.left=Math.random()*90+5+'%';
+    s.style.top=Math.random()*40+5+'%';
+    s.style.animationDelay=Math.random()*2+'s';
+    s.style.zIndex='2';
+    c.appendChild(s);
+  }
+}
+
+// ====== HELPERS ======
+function fmtN(n){
+  if(n>=1e9)return(n/1e9).toFixed(1)+'B';
+  if(n>=1e6)return(n/1e6).toFixed(1)+'M';
+  if(n>=1e3)return(n/1e3).toFixed(1)+'K';
+  return Math.floor(n).toString();
+}
+
+// ====== START ======
+measure();
+load();
+makeStars();
+placeShopkeeper();
+renderPanel();
+updateUI();
+spawnCustomer();
+spawnCustomer();
+loop();
+function onResize() {
+  measure();
+  placeShopkeeper();
+  // Reposition active workers to valid floor positions
+  Object.values(workerChars).forEach(c => {
+    c.setPos(randX(), floorZone());
+  });
+  // Reposition waiting customers to valid counter positions
+  customers.forEach(c => {
+    if (c.waiting && !c.moving) {
+      c.setPos(50 + Math.random() * (sw - 120), counterTop() + 20 + Math.random() * 20);
+    }
+  });
+}
+window.addEventListener('resize', onResize);
+</script>
+</body>
+</html>

@@ -6,60 +6,69 @@ import {
   type GameTemplateConfig,
 } from '@/lib/game-template';
 
-type GameType = GameTemplateConfig['gameType'];
-type Theme = GameTemplateConfig['theme'];
 type Difficulty = GameTemplateConfig['difficulty'];
 
-const GAME_TYPES: { type: GameType; emoji: string; name: string }[] = [
-  { type: 'platformer', emoji: '\u{1F3C3}', name: 'Platformer' },
-  { type: 'puzzle', emoji: '\u{1F9E9}', name: 'Puzzle' },
-  { type: 'memory', emoji: '\u{1F0CF}', name: 'Memory' },
-  { type: 'runner', emoji: '\u{1F3C3}\u200D\u2642\uFE0F', name: 'Runner' },
-  { type: 'shooter', emoji: '\u{1F3AF}', name: 'Shooter' },
-  { type: 'drawing', emoji: '\u{1F3A8}', name: 'Drawing' },
+const STYLE_CHIPS = [
+  'Platformer', 'Puzzle', 'Memory', 'Runner', 'Shooter', 'Drawing',
+  'Racing', 'Fighting', 'Tower Defense', 'Clicker', 'Adventure', 'Sports',
 ];
 
-const THEMES: { theme: Theme; emoji: string; name: string }[] = [
-  { theme: 'space', emoji: '\u{1F680}', name: 'Space' },
-  { theme: 'ocean', emoji: '\u{1F30A}', name: 'Ocean' },
-  { theme: 'forest', emoji: '\u{1F332}', name: 'Forest' },
-  { theme: 'city', emoji: '\u{1F3D9}\uFE0F', name: 'City' },
-  { theme: 'fantasy', emoji: '\u{1F3F0}', name: 'Fantasy' },
+const WORLD_CHIPS = [
+  'Space', 'Ocean', 'Forest', 'City', 'Fantasy', 'Candy Land',
+  'Dinosaurs', 'Superheroes', 'Pirates', 'Robots', 'Haunted House', 'Ice World',
 ];
 
-const DIFFICULTIES: { diff: Difficulty; stars: string; label: string; ages: string }[] = [
-  { diff: 'easy', stars: '\u2B50', label: 'Easy', ages: '3-5' },
-  { diff: 'medium', stars: '\u2B50\u2B50', label: 'Medium', ages: '6-8' },
-  { diff: 'hard', stars: '\u2B50\u2B50\u2B50', label: 'Hard', ages: '9+' },
+const DIFFICULTIES: { diff: Difficulty; label: string; ages: string; desc: string }[] = [
+  { diff: 'easy', label: 'Easy', ages: '3-5', desc: 'Big buttons, slow & gentle' },
+  { diff: 'medium', label: 'Medium', ages: '6-8', desc: 'Some challenge' },
+  { diff: 'hard', label: 'Hard', ages: '9+', desc: 'Fast & tricky' },
 ];
 
 const FEATURES = [
-  { id: 'score', emoji: '\u{1F4CA}', name: 'Score System' },
-  { id: 'timer', emoji: '\u23F1\uFE0F', name: 'Timer' },
-  { id: 'levels', emoji: '\u{1F4C8}', name: 'Multiple Levels' },
-  { id: 'powerups', emoji: '\u26A1', name: 'Power-ups' },
-  { id: 'sounds', emoji: '\u{1F50A}', name: 'Sound Effects' },
+  { id: 'score', name: 'Score' },
+  { id: 'timer', name: 'Timer' },
+  { id: 'levels', name: 'Levels' },
+  { id: 'powerups', name: 'Power-ups' },
+  { id: 'sounds', name: 'Sounds' },
+];
+
+const KNOWN_GAME_TYPES: NonNullable<GameTemplateConfig['gameType']>[] = [
+  'platformer', 'puzzle', 'memory', 'runner', 'shooter', 'drawing',
+];
+const KNOWN_THEMES: NonNullable<GameTemplateConfig['theme']>[] = [
+  'space', 'ocean', 'forest', 'city', 'fantasy',
 ];
 
 export default function GameCreator() {
   const [isOpen, setIsOpen] = useState(false);
-  const [gameType, setGameType] = useState<GameType | null>(null);
-  const [theme, setTheme] = useState<Theme | null>(null);
-  const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
-  const [features, setFeatures] = useState<string[]>(['score', 'timer', 'levels', 'powerups']);
-  const [title, setTitle] = useState('');
+  const [step, setStep] = useState(1);
   const [description, setDescription] = useState('');
+  const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
+  const [features, setFeatures] = useState<string[]>(['score', 'levels', 'sounds']);
+  const [title, setTitle] = useState('');
   const [devName, setDevName] = useState('');
   const [generatedPrompt, setGeneratedPrompt] = useState('');
   const [copied, setCopied] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const promptRef = useRef<HTMLPreElement>(null);
 
-  const step =
-    !gameType ? 1 :
-    !theme ? 2 :
-    !difficulty ? 3 :
-    !generatedPrompt ? 4 :
-    5;
+  const totalSteps = 4;
+
+  function addChipText(chip: string, category: 'style' | 'world') {
+    setDescription((prev) => {
+      const trimmed = prev.trim();
+      if (!trimmed) {
+        return category === 'style'
+          ? `A ${chip.toLowerCase()} game`
+          : `A game set in ${chip.toLowerCase()}`;
+      }
+      const sep = /[.!?]$/.test(trimmed) ? ' ' : '. ';
+      return category === 'style'
+        ? `${trimmed}${sep}With ${chip.toLowerCase()} gameplay.`
+        : `${trimmed}${sep}Set in ${chip.toLowerCase()}.`;
+    });
+    textareaRef.current?.focus();
+  }
 
   function toggleFeature(id: string) {
     setFeatures((prev) =>
@@ -68,24 +77,29 @@ export default function GameCreator() {
   }
 
   function generate() {
-    if (!gameType || !theme || !difficulty || !title) return;
+    if (!difficulty || !title.trim()) return;
+
+    const descLower = description.toLowerCase();
+    const detectedType = KNOWN_GAME_TYPES.find((t) => descLower.includes(t));
+    const detectedTheme = KNOWN_THEMES.find((t) => descLower.includes(t));
+
     const prompt = generateGamePrompt({
-      gameType,
-      theme,
+      gameType: detectedType,
+      theme: detectedTheme,
       difficulty,
       features,
-      title,
-      description,
-      developerName: devName || 'Game Developer',
+      title: title.trim(),
+      description: description.trim(),
+      developerName: devName.trim() || 'Game Developer',
     });
     setGeneratedPrompt(prompt);
+    setStep(4);
   }
 
   async function copyPrompt() {
     try {
       await navigator.clipboard.writeText(generatedPrompt);
     } catch {
-      // Fallback
       const ta = document.createElement('textarea');
       ta.value = generatedPrompt;
       document.body.appendChild(ta);
@@ -98,12 +112,11 @@ export default function GameCreator() {
   }
 
   function reset() {
-    setGameType(null);
-    setTheme(null);
-    setDifficulty(null);
-    setFeatures(['score', 'timer', 'levels', 'powerups']);
-    setTitle('');
+    setStep(1);
     setDescription('');
+    setDifficulty(null);
+    setFeatures(['score', 'levels', 'sounds']);
+    setTitle('');
     setDevName('');
     setGeneratedPrompt('');
     setCopied(false);
@@ -121,7 +134,7 @@ export default function GameCreator() {
             Create Your Own Game
           </h2>
           <p className="text-lg text-[var(--text)] opacity-60">
-            Answer a few questions, get a ready-to-use AI prompt, paste it into Claude or any AI to build your game!
+            Describe your dream game, get an AI prompt, and bring it to life!
           </p>
         </button>
       </section>
@@ -134,11 +147,11 @@ export default function GameCreator() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <h2 className="font-fredoka font-bold text-2xl sm:text-3xl text-[var(--text)]">
-            {'\u{1F3AE}'} Game Creator
+            Game Creator
           </h2>
           <button
             onClick={() => setIsOpen(false)}
-            className="text-[var(--text)] opacity-50 hover:opacity-100 text-2xl"
+            className="text-[var(--text)] opacity-50 hover:opacity-100 text-2xl touch-target"
           >
             {'\u2715'}
           </button>
@@ -146,7 +159,7 @@ export default function GameCreator() {
 
         {/* Progress */}
         <div className="flex gap-2 mb-8">
-          {[1, 2, 3, 4, 5].map((s) => (
+          {Array.from({ length: totalSteps }, (_, i) => i + 1).map((s) => (
             <div
               key={s}
               className="h-2 flex-1 rounded-full transition-all duration-300"
@@ -158,66 +171,93 @@ export default function GameCreator() {
           ))}
         </div>
 
-        {/* Step 1: Game Type */}
+        {/* Step 1: Describe your dream game */}
         {step === 1 && (
           <div>
-            <h3 className="font-fredoka font-semibold text-xl text-[var(--text)] mb-4">
-              What type of game do you want to make?
+            <h3 className="font-fredoka font-semibold text-xl text-[var(--text)] mb-1">
+              What&apos;s your dream game?
             </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {GAME_TYPES.map((g) => (
-                <button
-                  key={g.type}
-                  onClick={() => setGameType(g.type)}
-                  className="p-4 rounded-xl text-center transition-all hover:scale-105 active:scale-95"
-                  style={{
-                    background: 'var(--surface)',
-                    border: '2px solid var(--border)',
-                    color: 'var(--text)',
-                  }}
-                >
-                  <div className="text-3xl mb-2">{g.emoji}</div>
-                  <div className="font-fredoka font-semibold">{g.name}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+            <p className="text-sm text-[var(--text)] opacity-50 mb-4">
+              Describe it in your own words &mdash; the more detail, the better the game!
+            </p>
 
-        {/* Step 2: Theme */}
-        {step === 2 && (
-          <div>
-            <h3 className="font-fredoka font-semibold text-xl text-[var(--text)] mb-4">
-              Pick a theme for your game
-            </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-              {THEMES.map((t) => (
-                <button
-                  key={t.theme}
-                  onClick={() => setTheme(t.theme)}
-                  className="p-4 rounded-xl text-center transition-all hover:scale-105 active:scale-95"
-                  style={{
-                    background: 'var(--surface)',
-                    border: '2px solid var(--border)',
-                    color: 'var(--text)',
-                  }}
-                >
-                  <div className="text-3xl mb-2">{t.emoji}</div>
-                  <div className="font-fredoka font-semibold text-sm">{t.name}</div>
-                </button>
-              ))}
+            <textarea
+              ref={textareaRef}
+              placeholder={"Tell us everything!\n\nWhat do you do in the game?\nWho do you play as?\nWhat's the world like?\nWhat makes it fun or special?"}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full p-4 rounded-xl resize-none text-base leading-relaxed"
+              style={{
+                background: 'var(--surface)',
+                border: '2px solid var(--border)',
+                color: 'var(--text)',
+                minHeight: '150px',
+              }}
+              maxLength={1000}
+            />
+            <div className="text-right text-xs text-[var(--text)] opacity-30 mt-1">
+              {description.length}/1000
             </div>
+
+            {/* Inspiration chips */}
+            <div className="mt-4">
+              <p className="text-sm font-semibold text-[var(--text)] opacity-60 mb-3">
+                Need ideas? Tap to add:
+              </p>
+
+              <p className="text-xs font-medium text-[var(--text)] opacity-40 mb-1.5 uppercase tracking-wide">
+                Game Style
+              </p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {STYLE_CHIPS.map((chip) => (
+                  <button
+                    key={chip}
+                    onClick={() => addChipText(chip, 'style')}
+                    className="px-3 py-1.5 rounded-full text-sm font-medium transition-all hover:scale-105 active:scale-95"
+                    style={{
+                      background: 'var(--surface)',
+                      border: '1.5px solid var(--border)',
+                      color: 'var(--text)',
+                    }}
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
+
+              <p className="text-xs font-medium text-[var(--text)] opacity-40 mb-1.5 uppercase tracking-wide">
+                World / Theme
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {WORLD_CHIPS.map((chip) => (
+                  <button
+                    key={chip}
+                    onClick={() => addChipText(chip, 'world')}
+                    className="px-3 py-1.5 rounded-full text-sm font-medium transition-all hover:scale-105 active:scale-95"
+                    style={{
+                      background: 'var(--surface)',
+                      border: '1.5px solid var(--border)',
+                      color: 'var(--text)',
+                    }}
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <button
-              onClick={() => { setGameType(null); }}
-              className="mt-4 text-sm text-[var(--primary)] hover:underline"
+              onClick={() => setStep(2)}
+              disabled={!description.trim()}
+              className="mt-6 w-full btn-primary py-3 rounded-xl font-fredoka font-bold text-lg disabled:opacity-40"
             >
-              {'\u2190'} Back
+              Next &rarr;
             </button>
           </div>
         )}
 
-        {/* Step 3: Difficulty */}
-        {step === 3 && (
+        {/* Step 2: Difficulty */}
+        {step === 2 && (
           <div>
             <h3 className="font-fredoka font-semibold text-xl text-[var(--text)] mb-4">
               How hard should it be?
@@ -226,22 +266,25 @@ export default function GameCreator() {
               {DIFFICULTIES.map((d) => (
                 <button
                   key={d.diff}
-                  onClick={() => setDifficulty(d.diff)}
+                  onClick={() => {
+                    setDifficulty(d.diff);
+                    setStep(3);
+                  }}
                   className="p-5 rounded-xl text-center transition-all hover:scale-105 active:scale-95"
                   style={{
-                    background: 'var(--surface)',
+                    background: difficulty === d.diff ? 'var(--primary)' : 'var(--surface)',
                     border: '2px solid var(--border)',
-                    color: 'var(--text)',
+                    color: difficulty === d.diff ? '#fff' : 'var(--text)',
                   }}
                 >
-                  <div className="text-2xl mb-1">{d.stars}</div>
                   <div className="font-fredoka font-bold text-lg">{d.label}</div>
-                  <div className="text-xs opacity-60 mt-1">Ages {d.ages}</div>
+                  <div className="text-sm opacity-70 mt-1">Ages {d.ages}</div>
+                  <div className="text-xs opacity-50 mt-0.5">{d.desc}</div>
                 </button>
               ))}
             </div>
             <button
-              onClick={() => { setTheme(null); }}
+              onClick={() => setStep(1)}
               className="mt-4 text-sm text-[var(--primary)] hover:underline"
             >
               {'\u2190'} Back
@@ -249,41 +292,20 @@ export default function GameCreator() {
           </div>
         )}
 
-        {/* Step 4: Features + Details + Generate */}
-        {step === 4 && (
+        {/* Step 3: Title + Features + Generate */}
+        {step === 3 && (
           <div>
             <h3 className="font-fredoka font-semibold text-xl text-[var(--text)] mb-4">
-              Customize your game
+              Name it &amp; launch!
             </h3>
 
-            {/* Features toggles */}
-            <div className="space-y-2 mb-6">
-              {FEATURES.map((f) => (
-                <label
-                  key={f.id}
-                  className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors"
-                  style={{ background: features.includes(f.id) ? 'var(--accent)' : 'var(--surface)' }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={features.includes(f.id)}
-                    onChange={() => toggleFeature(f.id)}
-                    className="w-5 h-5 accent-[var(--primary)]"
-                  />
-                  <span className="text-xl">{f.emoji}</span>
-                  <span className="font-medium text-[var(--text)]">{f.name}</span>
-                </label>
-              ))}
-            </div>
-
-            {/* Game title, description + developer name */}
-            <div className="space-y-3 mb-6">
+            <div className="space-y-3 mb-5">
               <input
                 type="text"
                 placeholder="Game Title (required)"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full p-3 rounded-lg font-medium text-lg"
+                className="w-full p-3 rounded-xl font-medium text-lg"
                 style={{
                   background: 'var(--surface)',
                   border: '2px solid var(--border)',
@@ -291,25 +313,12 @@ export default function GameCreator() {
                 }}
                 maxLength={50}
               />
-              <textarea
-                placeholder="Describe your game -- what happens, what makes it fun? (optional but recommended)"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full p-3 rounded-lg resize-none"
-                style={{
-                  background: 'var(--surface)',
-                  border: '2px solid var(--border)',
-                  color: 'var(--text)',
-                }}
-                rows={3}
-                maxLength={300}
-              />
               <input
                 type="text"
                 placeholder="Your Developer Name"
                 value={devName}
                 onChange={(e) => setDevName(e.target.value)}
-                className="w-full p-3 rounded-lg"
+                className="w-full p-3 rounded-xl"
                 style={{
                   background: 'var(--surface)',
                   border: '2px solid var(--border)',
@@ -319,42 +328,63 @@ export default function GameCreator() {
               />
             </div>
 
+            {/* Feature chips */}
+            <p className="text-sm font-semibold text-[var(--text)] opacity-60 mb-2">
+              Features to include:
+            </p>
+            <div className="flex flex-wrap gap-2 mb-5">
+              {FEATURES.map((f) => {
+                const active = features.includes(f.id);
+                return (
+                  <button
+                    key={f.id}
+                    onClick={() => toggleFeature(f.id)}
+                    className="px-3.5 py-2 rounded-full text-sm font-semibold transition-all active:scale-95"
+                    style={{
+                      background: active ? 'var(--primary)' : 'var(--surface)',
+                      border: `2px solid ${active ? 'var(--primary)' : 'var(--border)'}`,
+                      color: active ? '#fff' : 'var(--text)',
+                    }}
+                  >
+                    {active ? '\u2713 ' : ''}{f.name}
+                  </button>
+                );
+              })}
+            </div>
+
             {/* Summary */}
             <div
-              className="p-4 rounded-lg mb-6 text-sm"
-              style={{ background: 'var(--accent)', color: 'var(--text)' }}
+              className="p-4 rounded-xl mb-5 text-sm"
+              style={{ background: 'var(--border)', color: 'var(--text)' }}
             >
               <div className="font-fredoka font-semibold mb-1">Your Game:</div>
-              <div>
-                {GAME_TYPES.find((g) => g.type === gameType)?.emoji}{' '}
-                {GAME_TYPES.find((g) => g.type === gameType)?.name} &middot;{' '}
-                {THEMES.find((t) => t.theme === theme)?.emoji}{' '}
-                {THEMES.find((t) => t.theme === theme)?.name} &middot;{' '}
-                {DIFFICULTIES.find((d) => d.diff === difficulty)?.label}
+              <div className="line-clamp-2 opacity-70">{description}</div>
+              <div className="mt-1 opacity-50">
+                Difficulty: {DIFFICULTIES.find((d) => d.diff === difficulty)?.label}
               </div>
             </div>
 
             <div className="flex gap-3">
               <button
-                onClick={() => setDifficulty(null)}
-                className="px-4 py-3 rounded-lg font-medium"
+                onClick={() => setStep(2)}
+                className="px-4 py-3 rounded-xl font-medium"
                 style={{ background: 'var(--surface)', border: '2px solid var(--border)', color: 'var(--text)' }}
               >
                 {'\u2190'} Back
               </button>
               <button
                 onClick={generate}
-                disabled={!title}
-                className="flex-1 btn-primary py-3 rounded-lg font-fredoka font-bold text-lg disabled:opacity-40"
+                disabled={!title.trim()}
+                className="flex-1 btn-primary py-3 rounded-xl font-fredoka font-bold text-lg disabled:opacity-40"
               >
-                {'\u2728'} Generate AI Prompt
+                Generate AI Prompt
               </button>
             </div>
           </div>
         )}
 
-        {/* Step 5: Generated Prompt */}
-        {step === 5 && (
+        {/* Step 4: Generated Prompt */}
+        {step === 4 && (
           <div>
             <h3 className="font-fredoka font-semibold text-xl text-[var(--text)] mb-2">
               Your game prompt is ready!
@@ -366,12 +396,12 @@ export default function GameCreator() {
 
             {/* Prompt display */}
             <div
-              className="rounded-lg overflow-hidden mb-4"
+              className="rounded-xl overflow-hidden mb-4"
               style={{ border: '2px solid var(--border)' }}
             >
               <div
                 className="px-4 py-2 flex items-center justify-between text-sm font-medium"
-                style={{ background: 'var(--accent)', color: 'var(--text)' }}
+                style={{ background: 'var(--border)', color: 'var(--text)' }}
               >
                 <span>game-prompt.txt</span>
                 <span className="opacity-60">{generatedPrompt.length} chars</span>
@@ -393,14 +423,14 @@ export default function GameCreator() {
             <div className="flex gap-3 flex-wrap">
               <button
                 onClick={copyPrompt}
-                className="flex-1 min-w-[200px] btn-primary py-3 rounded-lg font-fredoka font-bold text-lg transition-all"
+                className="flex-1 min-w-[200px] btn-primary py-3 rounded-xl font-fredoka font-bold text-lg transition-all"
                 style={copied ? { background: '#22c55e' } : {}}
               >
-                {copied ? '\u2705 Copied!' : '\u{1F4CB} Copy to Clipboard'}
+                {copied ? '\u2705 Copied!' : 'Copy to Clipboard'}
               </button>
               <button
                 onClick={reset}
-                className="px-6 py-3 rounded-lg font-medium"
+                className="px-6 py-3 rounded-xl font-medium"
                 style={{ background: 'var(--surface)', border: '2px solid var(--border)', color: 'var(--text)' }}
               >
                 Start Over

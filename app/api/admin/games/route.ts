@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
-import { isAdminAuthenticated } from '@/lib/auth';
-import { getDb, toggleGamePublished, updateGame, getGameById } from '@/lib/db';
+import { getCurrentUser, requireMinRole } from '@/lib/auth';
+import { getDb, toggleGamePublished, updateGame, getGameById, getUserByDeveloperId } from '@/lib/db';
+import { sendGamePublishedEmail, sendGameUnpublishedEmail } from '@/lib/email';
 
 interface GameWithDev {
   id: number;
@@ -24,8 +25,8 @@ interface GameWithDev {
  * List all games (published and unpublished) with developer names.
  */
 export async function GET() {
-  const authed = await isAdminAuthenticated();
-  if (!authed) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -47,8 +48,8 @@ export async function GET() {
  * Body: { id: number, action: 'toggle' | 'delete' }
  */
 export async function PATCH(request: NextRequest) {
-  const authed = await isAdminAuthenticated();
-  if (!authed) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -61,11 +62,44 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (action === 'toggle') {
+      if (user.role !== 'super_admin') {
+        return NextResponse.json(
+          { error: 'Only super_admin can publish or unpublish games' },
+          { status: 403 },
+        );
+      }
+
+      const game = getGameById(id);
+      if (!game) {
+        return NextResponse.json({ error: 'Game not found' }, { status: 404 });
+      }
+
+      const wasPublished = game.published === 1;
       toggleGamePublished(id);
+
+      if (game.developer_id) {
+        const devUser = getUserByDeveloperId(game.developer_id);
+        if (devUser) {
+          if (wasPublished) {
+            sendGameUnpublishedEmail(devUser.email, devUser.display_name, game.title);
+          } else {
+            const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+            const gameUrl = `${baseUrl}${game.game_path}`;
+            sendGamePublishedEmail(devUser.email, devUser.display_name, game.title, gameUrl);
+          }
+        }
+      }
+
       return NextResponse.json({ success: true });
     }
 
     if (action === 'delete') {
+      if (user.role !== 'super_admin' && user.role !== 'admin') {
+        return NextResponse.json(
+          { error: 'Insufficient permissions to delete games' },
+          { status: 403 },
+        );
+      }
       getDb().prepare('DELETE FROM games WHERE id = ?').run(id);
       return NextResponse.json({ success: true });
     }
@@ -87,8 +121,8 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
  *   - file (optional, .html only, max 5 MB)
  */
 export async function PUT(request: NextRequest) {
-  const authed = await isAdminAuthenticated();
-  if (!authed) {
+  const user = await requireMinRole('family_dev');
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

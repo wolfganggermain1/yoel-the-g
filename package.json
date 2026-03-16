@@ -9,14 +9,21 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "adm-zip": "^0.5.16",
+    "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.6.2",
+    "jsonwebtoken": "^9.0.3",
     "next": "14.2.35",
     "react": "^18",
     "react-dom": "^18",
+    "resend": "^6.9.3",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
+    "@types/bcryptjs": "^2.4.6",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",

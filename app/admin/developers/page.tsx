@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, FormEvent, useCallback } from 'react';
+import { useAuth } from '@/components/AdminGuard';
 
 interface Developer {
   id: number;
@@ -13,6 +14,9 @@ interface Developer {
 }
 
 export default function AdminDevelopersPage() {
+  const { user } = useAuth();
+  const isAdminOrAbove = user?.role === 'super_admin' || user?.role === 'admin';
+
   const [developers, setDevelopers] = useState<Developer[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -135,8 +139,8 @@ export default function AdminDevelopersPage() {
         </p>
       </div>
 
-      {/* Add developer form */}
-      <div
+      {/* Add developer form - admin+ only */}
+      {isAdminOrAbove && <div
         className="rounded-2xl p-6"
         style={{
           backgroundColor: 'var(--surface)',
@@ -228,7 +232,7 @@ export default function AdminDevelopersPage() {
             {submitting ? 'Adding...' : 'Add Developer'}
           </button>
         </form>
-      </div>
+      </div>}
 
       {/* Pending developers */}
       {pending.length > 0 && (
@@ -251,8 +255,8 @@ export default function AdminDevelopersPage() {
               <DeveloperRow
                 key={dev.id}
                 developer={dev}
-                onApprove={() => handleApprove(dev.id)}
-                onRemove={() => handleRemove(dev.id, dev.name)}
+                onApprove={isAdminOrAbove ? () => handleApprove(dev.id) : undefined}
+                onRemove={isAdminOrAbove ? () => handleRemove(dev.id, dev.name) : undefined}
               />
             ))}
           </div>
@@ -285,7 +289,7 @@ export default function AdminDevelopersPage() {
               <DeveloperRow
                 key={dev.id}
                 developer={dev}
-                onRemove={() => handleRemove(dev.id, dev.name)}
+                onRemove={isAdminOrAbove ? () => handleRemove(dev.id, dev.name) : undefined}
               />
             ))}
           </div>
@@ -306,7 +310,7 @@ function DeveloperRow({
 }: {
   developer: Developer;
   onApprove?: () => void;
-  onRemove: () => void;
+  onRemove?: () => void;
 }) {
   return (
     <div
@@ -345,37 +349,41 @@ function DeveloperRow({
         {developer.approved ? 'Approved' : 'Pending'}
       </span>
 
-      {/* Actions */}
-      <div className="flex gap-2 flex-shrink-0">
-        {!developer.approved && onApprove && (
-          <button
-            onClick={onApprove}
-            className="p-2 rounded-lg text-sm hover:opacity-80 transition-opacity cursor-pointer"
-            style={{
-              backgroundColor: 'rgba(34, 197, 94, 0.1)',
-              border: '1px solid rgba(34, 197, 94, 0.3)',
-              color: '#22c55e',
-            }}
-            title="Approve developer"
-            aria-label="Approve developer"
-          >
-            {'\u2705'}
-          </button>
-        )}
-        <button
-          onClick={onRemove}
-          className="p-2 rounded-lg text-sm hover:opacity-80 transition-opacity cursor-pointer"
-          style={{
-            backgroundColor: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid rgba(239, 68, 68, 0.3)',
-            color: '#ef4444',
-          }}
-          title="Remove developer"
-          aria-label="Remove developer"
-        >
-          {'\u{1F5D1}'}
-        </button>
-      </div>
+      {/* Actions - visible to admin+ only */}
+      {(onApprove || onRemove) && (
+        <div className="flex gap-2 flex-shrink-0">
+          {!developer.approved && onApprove && (
+            <button
+              onClick={onApprove}
+              className="p-2 rounded-lg text-sm hover:opacity-80 transition-opacity cursor-pointer"
+              style={{
+                backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                border: '1px solid rgba(34, 197, 94, 0.3)',
+                color: '#22c55e',
+              }}
+              title="Approve developer"
+              aria-label="Approve developer"
+            >
+              {'\u2705'}
+            </button>
+          )}
+          {onRemove && (
+            <button
+              onClick={onRemove}
+              className="p-2 rounded-lg text-sm hover:opacity-80 transition-opacity cursor-pointer"
+              style={{
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                color: '#ef4444',
+              }}
+              title="Remove developer"
+              aria-label="Remove developer"
+            >
+              {'\u{1F5D1}'}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

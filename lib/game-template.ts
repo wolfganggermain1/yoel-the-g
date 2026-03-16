@@ -6,8 +6,8 @@
 // ---------------------------------------------------------------------------
 
 export interface GameTemplateConfig {
-  gameType: 'platformer' | 'puzzle' | 'memory' | 'runner' | 'shooter' | 'drawing';
-  theme: 'space' | 'ocean' | 'forest' | 'city' | 'fantasy';
+  gameType?: 'platformer' | 'puzzle' | 'memory' | 'runner' | 'shooter' | 'drawing';
+  theme?: 'space' | 'ocean' | 'forest' | 'city' | 'fantasy';
   difficulty: 'easy' | 'medium' | 'hard';
   features: string[]; // subset of: 'score', 'timer', 'levels', 'powerups', 'sounds'
   title: string;
@@ -19,8 +19,11 @@ export interface GameTemplateConfig {
 // Game type descriptions & mechanics
 // ---------------------------------------------------------------------------
 
+type KnownGameType = NonNullable<GameTemplateConfig['gameType']>;
+type KnownTheme = NonNullable<GameTemplateConfig['theme']>;
+
 const GAME_TYPE_INFO: Record<
-  GameTemplateConfig['gameType'],
+  KnownGameType,
   { label: string; description: string; mechanics: string }
 > = {
   platformer: {
@@ -102,7 +105,7 @@ const GAME_TYPE_INFO: Record<
 // ---------------------------------------------------------------------------
 
 const THEME_INFO: Record<
-  GameTemplateConfig['theme'],
+  KnownTheme,
   { label: string; description: string; visuals: string }
 > = {
   space: {
@@ -230,12 +233,12 @@ const FEATURE_DESCRIPTIONS: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 export function getGameTypeDescription(type: string): string {
-  const info = GAME_TYPE_INFO[type as GameTemplateConfig['gameType']];
+  const info = GAME_TYPE_INFO[type as KnownGameType];
   return info ? info.description : 'Unknown game type.';
 }
 
 export function getThemeDescription(theme: string): string {
-  const info = THEME_INFO[theme as GameTemplateConfig['theme']];
+  const info = THEME_INFO[theme as KnownTheme];
   return info ? info.description : 'Unknown theme.';
 }
 
@@ -253,14 +256,72 @@ export function getDifficultyParams(
 // ---------------------------------------------------------------------------
 
 export function generateGamePrompt(config: GameTemplateConfig): string {
-  const gameInfo = GAME_TYPE_INFO[config.gameType];
-  const themeInfo = THEME_INFO[config.theme];
+  const gameInfo = config.gameType ? GAME_TYPE_INFO[config.gameType] : null;
+  const themeInfo = config.theme ? THEME_INFO[config.theme] : null;
   const diffParams = DIFFICULTY_PARAMS[config.difficulty];
 
   const featureSections = config.features
     .filter((f) => FEATURE_DESCRIPTIONS[f])
     .map((f) => FEATURE_DESCRIPTIONS[f])
     .join('\n');
+
+  // Build game type section
+  const gameTypeSection = gameInfo
+    ? `
+================================================================================
+1. GAME TYPE: ${gameInfo.label}
+================================================================================
+
+${gameInfo.description}
+
+Game-Specific Mechanics:
+${gameInfo.mechanics}`
+    : `
+================================================================================
+1. GAME DESIGN (from developer's description)
+================================================================================
+
+The developer has described their game vision above. Use their description as
+the PRIMARY guide for game mechanics, controls, and gameplay loop. Design
+appropriate mechanics that bring their vision to life. If the description is
+vague, choose mechanics that are fun, intuitive, and age-appropriate.
+
+General guidelines:
+- Determine the best control scheme (tap, swipe, joystick, etc.) based on the game concept.
+- Design a clear win/lose condition or gameplay loop.
+- Include a scoring system that rewards skillful play.
+- Add variety through procedural generation, multiple enemy types, or escalating challenge.
+- The character/player avatar should be a cute, colorful sprite drawn on the canvas (no external images).`;
+
+  // Build theme section
+  const themeSection = themeInfo
+    ? `
+================================================================================
+2. THEME & SETTING: ${themeInfo.label}
+================================================================================
+
+${themeInfo.description}
+
+Visual Style Guidelines:
+${themeInfo.visuals}`
+    : `
+================================================================================
+2. THEME & VISUAL STYLE (from developer's description)
+================================================================================
+
+Use the developer's game description to determine the visual theme and setting.
+Design a cohesive, visually appealing world that matches their vision.
+
+General visual guidelines:
+- Use bright, saturated, kid-friendly colors throughout.
+- Create a layered background with at least 2-3 depth layers for visual richness.
+- Add ambient particles or effects (sparkles, bubbles, leaves, stars) for atmosphere.
+- Characters and objects should be drawn as cute, simple shapes using Canvas 2D API.
+- Collectibles should glow or pulse so they are easy to spot.
+- Use a consistent color palette that ties the whole game together.`;
+
+  const isDrawing = config.gameType === 'drawing' ||
+    config.description.toLowerCase().includes('drawing');
 
   const prompt = `
 ================================================================================
@@ -272,25 +333,19 @@ The game should be fun, polished, and fully playable with no external dependenci
 
 Game Title: "${config.title}"
 Developer: ${config.developerName}
-${config.description ? `\nGame Description (from the developer):\n"${config.description}"\n\nUse this description to guide the overall feel, story, and gameplay of the game.` : ''}
 
 ================================================================================
-1. GAME TYPE: ${gameInfo.label}
+DEVELOPER'S GAME VISION
 ================================================================================
 
-${gameInfo.description}
+"${config.description}"
 
-Game-Specific Mechanics:
-${gameInfo.mechanics}
-
-================================================================================
-2. THEME & SETTING: ${themeInfo.label}
-================================================================================
-
-${themeInfo.description}
-
-Visual Style Guidelines:
-${themeInfo.visuals}
+THIS IS THE MOST IMPORTANT SECTION. The developer (a kid!) has described
+exactly what they want their game to be. Read this carefully and make sure
+the final game matches their vision as closely as possible. Every detail
+they mentioned should be reflected in the game.
+${gameTypeSection}
+${themeSection}
 
 ================================================================================
 3. DIFFICULTY: ${diffParams.ageRange} age range
@@ -325,7 +380,7 @@ Canvas & Rendering:
 Game States -- implement these three screens:
 1. START SCREEN: Game title, "Tap to Start" prompt, brief instructions, developer credit.
 2. PLAYING: The active game with HUD (score, lives, etc.).
-3. GAME OVER: Final score, "Tap to Play Again" prompt. ${config.gameType !== 'drawing' ? '' : '(For drawing mode: no game-over state. Show a "New Canvas" button instead.)'}
+3. GAME OVER: Final score, "Tap to Play Again" prompt. ${!isDrawing ? '' : '(For drawing mode: no game-over state. Show a "New Canvas" button instead.)'}
 
 Performance:
 - Target 60 FPS. Keep draw calls efficient.

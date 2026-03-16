@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Loto - Zombie Road Blaster</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -19,6 +19,7 @@ canvas {
   display: block;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
 }
 </style>
 </head>
@@ -526,7 +527,7 @@ function drawCar() {
     ctx.save();
     ctx.globalAlpha = 0.6 + Math.sin(elapsed * 5) * 0.3;
     ctx.fillStyle = '#00ff88';
-    ctx.font = 'bold 10px sans-serif';
+    ctx.font = `bold ${Math.max(11, Math.floor(W * 0.03))}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.fillText('AUTO', 0, -h / 2 - 8);
     ctx.restore();
@@ -847,16 +848,17 @@ function drawHUD() {
     ctx.fill();
 
     ctx.fillStyle = '#fff';
-    ctx.font = `bold ${Math.min(12, W * 0.028)}px sans-serif`;
+    ctx.font = `bold ${Math.max(11, Math.min(12, W * 0.028))}px sans-serif`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.fillText(pLabel, pad + 2, py + 2);
   }
 
-  // Autopilot button (bottom-right)
+  // Autopilot button (bottom-right) — 46px bottom pad clears iOS home indicator
   const btnSize = Math.max(54, W * 0.12);
-  const btnX = W - pad - btnSize;
-  const btnY = H - pad - btnSize;
+  const btnPad = 46;
+  const btnX = W - btnPad - btnSize;
+  const btnY = H - btnPad - btnSize;
   ctx.fillStyle = player.autopilot ? 'rgba(0,255,136,0.5)' : 'rgba(255,255,255,0.2)';
   ctx.strokeStyle = player.autopilot ? '#00ff88' : '#fff';
   ctx.lineWidth = 2;
@@ -864,7 +866,7 @@ function drawHUD() {
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = player.autopilot ? '#00ff88' : '#fff';
-  ctx.font = `bold ${Math.min(13, btnSize * 0.2)}px sans-serif`;
+  ctx.font = `bold ${Math.max(11, Math.min(13, btnSize * 0.2))}px sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('AUTO', btnX + btnSize / 2, btnY + btnSize / 2 - 8);
@@ -1414,11 +1416,11 @@ function handleTap(x, y) {
 
   if (state !== 'playing') return;
 
-  // Check autopilot button
-  const pad = 12;
+  // Check autopilot button — 46px bottom pad matches drawn position
   const btnSize = Math.max(54, W * 0.12);
-  const btnX = W - pad - btnSize;
-  const btnY = H - pad - btnSize;
+  const btnPad = 46;
+  const btnX = W - btnPad - btnSize;
+  const btnY = H - btnPad - btnSize;
   if (x >= btnX && x <= btnX + btnSize && y >= btnY && y <= btnY + btnSize) {
     player.autopilot = !player.autopilot;
     return;
@@ -1465,6 +1467,8 @@ canvas.addEventListener('touchend', (e) => {
   e.preventDefault();
   touchActive = false;
 }, { passive: false });
+
+canvas.addEventListener('touchcancel', (e) => { e.preventDefault(); touchActive = false; }, { passive: false });
 
 // Mouse events
 canvas.addEventListener('mousedown', (e) => {

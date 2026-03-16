@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdminAuthenticated } from '@/lib/auth';
+import { requireMinRole } from '@/lib/auth';
 import {
   getAllDevelopers,
   addDeveloper,
   approveDeveloper,
   removeDeveloper,
   getDb,
+  getUserByDeveloperId,
 } from '@/lib/db';
+import { sendDeveloperApprovedEmail } from '@/lib/email';
 
 interface DeveloperWithCount {
   id: number;
@@ -24,8 +26,8 @@ interface DeveloperWithCount {
  * This endpoint requires admin auth for the full list.
  */
 export async function GET() {
-  const authed = await isAdminAuthenticated();
-  if (!authed) {
+  const user = await requireMinRole('family_dev');
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -53,9 +55,9 @@ export async function GET() {
  * Body: { name: string, emoji?: string }
  */
 export async function POST(request: NextRequest) {
-  const authed = await isAdminAuthenticated();
-  if (!authed) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const user = await requireMinRole('admin');
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
   try {
@@ -108,9 +110,9 @@ export async function POST(request: NextRequest) {
  * Body: { id: number, action: 'approve' | 'remove' }
  */
 export async function PATCH(request: NextRequest) {
-  const authed = await isAdminAuthenticated();
-  if (!authed) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const user = await requireMinRole('admin');
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
   try {
@@ -126,6 +128,12 @@ export async function PATCH(request: NextRequest) {
 
     if (action === 'approve') {
       approveDeveloper(id);
+
+      const devUser = getUserByDeveloperId(id);
+      if (devUser) {
+        sendDeveloperApprovedEmail(devUser.email, devUser.display_name);
+      }
+
       return NextResponse.json({ success: true });
     }
 

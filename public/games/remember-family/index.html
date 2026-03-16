@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Remember Family</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a2e; touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
-canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
+html, body { margin:0; padding:0; overflow:hidden; background:#000; touch-action:none; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; }
+canvas { display: block; width: 100vw; height: 100vh; height: 100dvh; touch-action: none; }
 </style>
 </head>
 <body>
@@ -48,6 +48,13 @@ function resize() {
 }
 resize();
 window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => {
+  setTimeout(() => {
+    resize();
+    generateStars();
+    generatePlanets();
+  }, 150);
+});
 
 // ============================================================
 // AUDIO ENGINE
@@ -435,7 +442,7 @@ canvas.addEventListener('mousedown', e => {
 });
 canvas.addEventListener('mouseup', () => { mouseDown = false; });
 
-function getMuteBtnPos() { return { x: W - 40, y: 40 }; }
+function getMuteBtnPos() { return { x: W - 50, y: 50 }; }
 
 function startGame() {
   initAudio();
@@ -1148,14 +1155,14 @@ function drawTouchControls() {
     // Static hint arrows
     ctx.globalAlpha = 0.15;
     ctx.fillStyle = '#fff';
-    ctx.font = `bold ${22 * scale}px sans-serif`;
+    ctx.font = `bold ${Math.max(14, Math.floor(22 * scale))}px sans-serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('< SLIDE >', W * 0.22, H - 50);
     ctx.globalAlpha = 1;
   }
 
   // Jump button (always visible)
-  const jx = W * 0.75, jy = H - 80, jr = 38;
+  const jx = W * 0.75, jy = H - 100, jr = 38;
   ctx.globalAlpha = touchJumpId !== null ? 0.3 : 0.12;
   ctx.fillStyle = '#fff';
   ctx.beginPath(); ctx.arc(jx, jy, jr, 0, Math.PI * 2); ctx.fill();

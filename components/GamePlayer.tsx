@@ -3,6 +3,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
 
+type GameAuthor = {
+  developer_name: string;
+  developer_emoji: string;
+  role: string;
+};
+
 type Game = {
   id: number;
   title: string;
@@ -15,11 +21,15 @@ type Game = {
   age_min: number;
   published: number;
   play_count: number;
+  player_count?: string;
+  controls?: string;
+  features?: string | null;
 };
 
 interface GamePlayerProps {
   game: Game;
   gameSlug: string;
+  authors?: GameAuthor[];
 }
 
 /**
@@ -35,7 +45,7 @@ function getPlayerId(): string {
   return id;
 }
 
-export default function GamePlayer({ game, gameSlug }: GamePlayerProps) {
+export default function GamePlayer({ game, gameSlug, authors }: GamePlayerProps) {
   const [xpNotifications, setXpNotifications] = useState<{ id: number; amount: number }[]>([]);
   const notifIdRef = useRef(0);
 
@@ -197,6 +207,28 @@ export default function GamePlayer({ game, gameSlug }: GamePlayerProps) {
           <path d="M12 19l-7-7 7-7" />
         </svg>
       </Link>
+
+      {/* Game Info & Credits Overlay */}
+      {authors && authors.length > 0 && (
+        <div className="
+          fixed bottom-4 left-4 z-[60]
+          px-3 py-2
+          rounded-xl
+          bg-black/50 backdrop-blur-sm
+          text-white text-xs sm:text-sm
+          shadow-lg
+          pointer-events-none
+          max-w-[200px]
+        ">
+          <div className="font-fredoka font-bold text-sm mb-1">{game.title}</div>
+          <div className="opacity-80">
+            Made by {authors.map(a => `${a.developer_emoji} ${a.developer_name}`).join(' & ')}
+          </div>
+          {game.player_count && (
+            <div className="opacity-60 mt-0.5">{game.player_count} · {game.controls || 'Mouse / Touch'}</div>
+          )}
+        </div>
+      )}
 
       {/* XP Notifications */}
       <div className="fixed top-4 right-4 z-[60] flex flex-col items-end gap-2 pointer-events-none">

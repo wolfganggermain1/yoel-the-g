@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>YOEL's MEGA ROBOT - Sky Battle</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -12,6 +12,7 @@ body {
   justify-content: center;
   align-items: center;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
@@ -107,7 +108,7 @@ canvas { display: block; image-rendering: pixelated; }
 .hud-item.combo { color: #ff00e6; }
 .hud-item.wave { color: #00f7ff; }
 .health-bar-bg {
-  width: 200px;
+  width: min(200px, 40vw);
   height: 16px;
   background: rgba(0,0,0,0.6);
   border-radius: 8px;
@@ -121,7 +122,7 @@ canvas { display: block; image-rendering: pixelated; }
   transition: width 0.3s;
 }
 .shield-bar-bg {
-  width: 200px;
+  width: min(200px, 40vw);
   height: 10px;
   background: rgba(0,0,0,0.6);
   border-radius: 5px;
@@ -140,7 +141,7 @@ canvas { display: block; image-rendering: pixelated; }
   bottom: 60px;
   left: 50%;
   transform: translateX(-50%);
-  width: 400px;
+  width: min(400px, 90vw);
   text-align: center;
   display: none;
 }
@@ -200,10 +201,10 @@ canvas { display: block; image-rendering: pixelated; }
 }
 .upgrade-icon { font-size: 40px; margin-bottom: 10px; }
 .upgrade-name { color: #00f7ff; font-size: 16px; font-weight: bold; margin-bottom: 8px; }
-.upgrade-desc { color: #88aacc; font-size: 13px; }
+.upgrade-desc { color: #88aacc; font-size: 14px; }
 #mobile-controls {
   position: absolute;
-  bottom: 10px;
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   left: 0; right: 0;
   display: none;
   justify-content: space-between;
@@ -223,6 +224,7 @@ canvas { display: block; image-rendering: pixelated; }
   justify-content: center;
   touch-action: none;
 }
+.mobile-btn:active { background: rgba(0,247,255,0.5); transform: scale(0.92); }
 .controls-hint {
   color: #668;
   font-size: 14px;
@@ -326,7 +328,7 @@ window.addEventListener('keydown', e => { keys[e.code] = true; if(['Space','Arro
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
 // Mobile detection
-const isMobile = /Android|iPhone|iPad|iPod|webOS/i.test(navigator.userAgent);
+const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 if (isMobile) document.getElementById('mobile-controls').style.display = 'flex';
 
 // Mobile controls
@@ -353,6 +355,7 @@ document.querySelectorAll('.mobile-btn').forEach(btn => {
   };
   btn.addEventListener('touchstart', startHandler);
   btn.addEventListener('touchend', endHandler);
+  btn.addEventListener('touchcancel', endHandler);
   btn.addEventListener('mousedown', startHandler);
   btn.addEventListener('mouseup', endHandler);
 });
@@ -1888,7 +1891,7 @@ class Game {
       ctx.lineWidth = 1;
       ctx.strokeRect(bx, by, bw, bh);
       ctx.fillStyle = pct >= 1 ? C.magenta : '#888';
-      ctx.font = '11px monospace';
+      ctx.font = Math.max(14, Math.round(canvas.width * 0.035)) + 'px monospace';
       ctx.textAlign = 'left';
       ctx.fillText(pct >= 1 ? '[E] SPECIAL READY!' : '[E] Charging...', bx, by - 5);
     }

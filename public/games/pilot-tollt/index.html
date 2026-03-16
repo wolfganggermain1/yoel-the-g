@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Pilot Tollt</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
-canvas{display:block;width:100vw;height:100vh}
+canvas{display:block;width:100vw;height:100vh;height:100dvh}
 </style>
 </head>
 <body>
@@ -164,7 +164,10 @@ let aimShoot=false;
 let lastTapTime=0;
 let joystickActive=false;
 let joystickStartX=0;
+let joystickStartY=0;
 let joystickX=0;
+let joystickTouchId=null;
+let aimTouchId=null;
 const JOYSTICK_RADIUS=55;
 const JOYSTICK_Y_OFFSET=100;
 
@@ -181,33 +184,68 @@ function getMousePos(e){
 canvas.addEventListener('touchstart',function(e){
   e.preventDefault();
   initAudio();
-  const p=getTouchPos(e);
-  if(state==='start'){state='takeoff';stateTimer=0;takeoffProgress=0;startLevel();return}
-  if(state==='gameOver'||state==='victory'){resetGame();return}
-  // Check mute button
-  if(checkMuteBtn(p.x,p.y))return;
-  touchActive=true;touchX=p.x;touchY=p.y;
-  // If touch is in bottom portion, use as movement control
-  if(p.y>H*0.6){
-    joystickActive=true;joystickStartX=p.x;joystickX=p.x;
-  }else{
-    // Tap to aim-shoot
-    aimX=p.x;aimY=p.y;aimShoot=true;
+  const r=canvas.getBoundingClientRect();
+  // Handle state transitions from first touch
+  if(e.changedTouches.length>0){
+    const t0=e.changedTouches[0];
+    const px=t0.clientX-r.left,py=t0.clientY-r.top;
+    if(state==='start'){state='takeoff';stateTimer=0;takeoffProgress=0;startLevel();return}
+    if(state==='gameOver'||state==='victory'){resetGame();return}
+  }
+  for(let i=0;i<e.changedTouches.length;i++){
+    const t=e.changedTouches[i];
+    const px=t.clientX-r.left,py=t.clientY-r.top;
+    if(checkMuteBtn(px,py))continue;
+    touchActive=true;touchX=px;touchY=py;
+    if(py>H*0.6){
+      // Joystick zone: bottom 40%
+      if(joystickTouchId===null){
+        joystickActive=true;joystickTouchId=t.identifier;
+        joystickStartX=px;joystickStartY=py;joystickX=px;
+      }
+    }else{
+      // Aim/shoot zone: top 60%
+      if(aimTouchId===null){
+        aimTouchId=t.identifier;
+        aimX=px;aimY=py;aimShoot=true;
+      }
+    }
   }
 },{passive:false});
 
 canvas.addEventListener('touchmove',function(e){
   e.preventDefault();
-  if(!touchActive)return;
-  const p=getTouchPos(e);
-  touchX=p.x;touchY=p.y;
-  if(joystickActive){joystickX=p.x}
-  else{aimX=p.x;aimY=p.y}
+  const r=canvas.getBoundingClientRect();
+  for(let i=0;i<e.changedTouches.length;i++){
+    const t=e.changedTouches[i];
+    const px=t.clientX-r.left,py=t.clientY-r.top;
+    if(t.identifier===joystickTouchId){
+      joystickX=px;touchX=px;touchY=py;
+    }else if(t.identifier===aimTouchId){
+      aimX=px;aimY=py;touchX=px;touchY=py;
+    }
+  }
 },{passive:false});
 
 canvas.addEventListener('touchend',function(e){
   e.preventDefault();
-  touchActive=false;joystickActive=false;
+  for(let i=0;i<e.changedTouches.length;i++){
+    const t=e.changedTouches[i];
+    if(t.identifier===joystickTouchId){
+      joystickActive=false;joystickTouchId=null;
+    }
+    if(t.identifier===aimTouchId){
+      aimTouchId=null;
+    }
+  }
+  if(joystickTouchId===null&&aimTouchId===null)touchActive=false;
+},{passive:false});
+
+canvas.addEventListener('touchcancel',function(e){
+  touchActive=false;
+  joystickActive=false;
+  joystickTouchId=null;
+  aimTouchId=null;
 },{passive:false});
 
 canvas.addEventListener('mousedown',function(e){
@@ -236,7 +274,7 @@ document.addEventListener('keydown',function(e){
 document.addEventListener('keyup',function(e){keys[e.key]=false});
 
 function checkMuteBtn(px,py){
-  const bx=W-50,by=10,bs=36;
+  const bx=W-48,by=H-54,bs=44;
   if(px>=bx&&px<=bx+bs&&py>=by&&py<=by+bs){muted=!muted;return true}
   return false;
 }
@@ -382,7 +420,12 @@ function updatePlaying(dt){
   let moveDir=0;
   if(joystickActive){
     const diff=joystickX-joystickStartX;
-    moveDir=clamp(diff/(JOYSTICK_RADIUS),-1,1);
+    const deadZone=8;
+    if(Math.abs(diff)<deadZone){
+      moveDir=0;
+    }else{
+      moveDir=clamp((diff-Math.sign(diff)*deadZone)/(JOYSTICK_RADIUS-deadZone),-1,1);
+    }
   }
   if(mouseDown){
     const diff=mouseX-player.x;
@@ -1020,8 +1063,8 @@ function drawHUD(){
     }
     ctx.fillStyle=col;
     roundRect(px,py,44,18,4);ctx.fill();
-    ctx.fillStyle='#fff';ctx.font='bold 10px sans-serif';ctx.textAlign='center';
-    ctx.fillText(label,px+22,py+13);
+    ctx.fillStyle='#fff';ctx.font='bold '+Math.max(13,10)+'px sans-serif';ctx.textAlign='center';
+    ctx.fillText(label,px+22,py+14);
     // Duration bar
     const pct=activePower.remaining/activePower.duration;
     ctx.fillStyle='rgba(0,0,0,0.3)';
@@ -1036,7 +1079,7 @@ function drawHUD(){
 
   // Joystick visual (mobile)
   if(joystickActive){
-    const jy=H-JOYSTICK_Y_OFFSET;
+    const jy=joystickStartY;
     ctx.globalAlpha=0.25;
     ctx.fillStyle='#fff';
     ctx.beginPath();ctx.arc(joystickStartX,jy,JOYSTICK_RADIUS,0,Math.PI*2);ctx.fill();
@@ -1061,21 +1104,21 @@ function drawHeart(x,y,r){
 }
 
 function drawMuteBtn(){
-  const bx=W-46,by=H-50,bs=32;
+  const bx=W-48,by=H-54,bs=44;
   ctx.fillStyle='rgba(0,0,0,0.3)';
   roundRect(bx,by,bs,bs,6);ctx.fill();
   ctx.strokeStyle='#fff';ctx.lineWidth=2;
-  // Speaker icon
+  // Speaker icon (centered in 44x44 box)
   ctx.beginPath();
-  ctx.moveTo(bx+8,by+11);ctx.lineTo(bx+12,by+11);ctx.lineTo(bx+17,by+7);
-  ctx.lineTo(bx+17,by+25);ctx.lineTo(bx+12,by+21);ctx.lineTo(bx+8,by+21);ctx.closePath();
+  ctx.moveTo(bx+10,by+15);ctx.lineTo(bx+15,by+15);ctx.lineTo(bx+21,by+10);
+  ctx.lineTo(bx+21,by+34);ctx.lineTo(bx+15,by+29);ctx.lineTo(bx+10,by+29);ctx.closePath();
   ctx.stroke();
   if(!muted){
-    ctx.beginPath();ctx.arc(bx+19,by+16,4,Math.PI*-0.4,Math.PI*0.4);ctx.stroke();
-    ctx.beginPath();ctx.arc(bx+19,by+16,7,Math.PI*-0.35,Math.PI*0.35);ctx.stroke();
+    ctx.beginPath();ctx.arc(bx+24,by+22,5,Math.PI*-0.4,Math.PI*0.4);ctx.stroke();
+    ctx.beginPath();ctx.arc(bx+24,by+22,9,Math.PI*-0.35,Math.PI*0.35);ctx.stroke();
   }else{
-    ctx.beginPath();ctx.moveTo(bx+20,by+11);ctx.lineTo(bx+27,by+21);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(bx+27,by+11);ctx.lineTo(bx+20,by+21);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(bx+25,by+15);ctx.lineTo(bx+33,by+29);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(bx+33,by+15);ctx.lineTo(bx+25,by+29);ctx.stroke();
   }
 }
 
@@ -1136,7 +1179,7 @@ function drawStartScreen(dt){
 
   // Credit
   ctx.fillStyle='rgba(255,255,255,0.5)';
-  ctx.font='12px sans-serif';
+  ctx.font=Math.max(14,12)+'px sans-serif';
   ctx.fillText('by Yoel',W/2,H-20);
 
   drawMuteBtn();
