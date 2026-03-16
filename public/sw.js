@@ -1,6 +1,6 @@
-const CACHE_NAME = 'yoel-the-g-v2';
-const GAME_CACHE = 'yoel-games-v2';
-const STATIC_CACHE = 'yoel-static-v2';
+const CACHE_NAME = 'yoel-the-g-v3';
+const GAME_CACHE = 'yoel-games-v3';
+const STATIC_CACHE = 'yoel-static-v3';
 
 const APP_SHELL = [
   '/',
@@ -26,12 +26,44 @@ const GAME_FILES = [
   '/games/sparkle-shop/index.html',
 ];
 
-// Install: pre-cache app shell + all games (all under 5MB)
+// The Next.js play wrapper pages — must be cached for offline play
+const PLAY_PAGES = [
+  '/play/airplane-ocean',
+  '/play/cute-rescue',
+  '/play/johnny-trigger-sniper-3d',
+  '/play/lilo-stitch-chess',
+  '/play/loti-it0',
+  '/play/loto',
+  '/play/pilot-tollt',
+  '/play/remember-family',
+  '/play/robot-battle',
+  '/play/simon-says',
+  '/play/sky-battle',
+  '/play/sparkle-shop',
+];
+
+// Resilient caching — individual URL failures don't abort the SW install
+async function resilientCacheAll(cacheName, urls) {
+  const cache = await caches.open(cacheName);
+  await Promise.allSettled(
+    urls.map(async (url) => {
+      try {
+        const response = await fetch(url);
+        if (response.ok) await cache.put(url, response);
+      } catch (_) {}
+    })
+  );
+}
+
+// Install: pre-cache everything needed for offline play
 self.addEventListener('install', (event) => {
   event.waitUntil(
     Promise.all([
+      // App shell — atomic (these must succeed)
       caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)),
-      caches.open(GAME_CACHE).then((cache) => cache.addAll(GAME_FILES)),
+      // Games + play pages — resilient (individual failures are ok)
+      resilientCacheAll(GAME_CACHE, GAME_FILES),
+      resilientCacheAll(CACHE_NAME, PLAY_PAGES),
     ])
   );
   self.skipWaiting();
@@ -84,7 +116,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Game files: cache-first (pre-cached on install, static HTML)
+  // Game files: cache-first (pre-cached on install)
   if (url.pathname.startsWith('/games/')) {
     event.respondWith(
       caches.open(GAME_CACHE).then((cache) =>
@@ -100,7 +132,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // App pages + everything else: network-first with cache fallback
+  // Play pages + everything else: network-first, cache fallback
   event.respondWith(
     fetch(event.request)
       .then((response) => {
