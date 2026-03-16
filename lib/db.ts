@@ -108,6 +108,15 @@ function initializeDb(): void {
     );
   `);
 
+  // ---- Migrations ----
+  // Add file_size_bytes column if not present (schema prep for 5MB offline gate)
+  const hasFileSizeCol = d.prepare(
+    `SELECT COUNT(*) as cnt FROM pragma_table_info('games') WHERE name = 'file_size_bytes'`
+  ).get() as { cnt: number };
+  if (hasFileSizeCol.cnt === 0) {
+    d.exec(`ALTER TABLE games ADD COLUMN file_size_bytes INTEGER`);
+  }
+
   // ---- Seed developers (idempotent) ----
   const insertDev = d.prepare(`
     INSERT OR IGNORE INTO developers (name, slug, avatar_emoji, approved)
