@@ -207,6 +207,14 @@ function initializeDb(): void {
   );
 
   seedGame(
+    "Skate Park", "skate-park",
+    "Shred the skate park with epic tricks, grinds and jumps!",
+    yoelId, "\uD83D\uDEF9", "/games/skate-park/index.html", "arcade",
+    "1 Player", "Mouse / Touch", ["Score", "Levels", "Sound"],
+    [{ devId: yoelId, role: "lead" }]
+  );
+
+  seedGame(
     "Johnny Trigger Sniper 3D", "johnny-trigger-sniper-3d",
     "Take aim and hit the targets in this action-packed sniper game!",
     chadId, "\uD83C\uDFAF", "/games/johnny-trigger-sniper-3d/index.html", "arcade",
@@ -239,12 +247,20 @@ function initializeDb(): void {
     [{ devId: ezekielId, role: "lead" }, { devId: yoelId, role: "co-author" }]
   );
 
-  // --- Ezekiel's solo game ---
+  // --- Ezekiel's solo games ---
   seedGame(
     "Sky Battle", "sky-battle",
     "Epic bird vs airplane sky battle!",
     ezekielId, "\uD83E\uDD85", "/games/sky-battle/index.html", "arcade",
     "1 Player", "Mouse / Touch", ["Score"],
+    [{ devId: ezekielId, role: "lead" }]
+  );
+
+  seedGame(
+    "Birdie in a Pink Waterfall", "birdie-waterfall",
+    "Guide your birdie through a magical pink waterfall adventure!",
+    ezekielId, "\uD83D\uDC26", "/games/birdie-waterfall/index.html", "arcade",
+    "1 Player", "Mouse / Touch", ["Score", "Levels", "Sound"],
     [{ devId: ezekielId, role: "lead" }]
   );
 
