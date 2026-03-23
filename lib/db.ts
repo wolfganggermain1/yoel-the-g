@@ -265,6 +265,14 @@ function initializeDb(): void {
     [{ devId: areliId, role: "lead" }]
   );
 
+  seedGame(
+    "Drawing Pad", "drawing-pad",
+    "Create beautiful art with brushes, glitter, rainbow pens, stamps and more!",
+    areliId, "\uD83C\uDFA8", "/games/drawing-pad/index.html", "creative",
+    "1 Player", "Mouse / Touch", ["Creative", "Save"],
+    [{ devId: areliId, role: "lead" }]
+  );
+
   // ---- Migrate: consolidate Yoel's email to yoeltheg7@gmail.com ----
   const newYoel = d.prepare("SELECT id FROM users WHERE email = 'yoeltheg7@gmail.com'").get();
   if (newYoel) {

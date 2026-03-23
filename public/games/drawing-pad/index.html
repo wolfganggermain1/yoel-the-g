@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Drawing Pad</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #fdf2f8;
+  height: 100vh; height: 100dvh;
+  overflow: hidden;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+  overscroll-behavior: none;
+  font-family: sans-serif;
+}
+canvas {
+  display: block;
+  position: absolute;
+  top: 0; left: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+}
+</style>
+</head>
+<body>
+<canvas id="bgCanvas"></canvas>
+<canvas id="drawCanvas"></canvas>
+<canvas id="uiCanvas"></canvas>
+
+<script>
+// ============================================================
+// PLATFORM INTEGRATION
+// ============================================================
+let platformTheme = 'blue-light';
+try {
+  platformTheme = window.parent.document.documentElement.getAttribute('data-theme') || 'blue-light';
+} catch(e) {}
+
+const THEMES = {
+  'blue-light':  { primary: '#3b82f6', dark: '#1e40af', bg: '#f0f7ff', surface: '#ffffff', text: '#1e293b', accent: '#93c5fd', glow: 'rgba(59,130,246,0.4)' },
+  'blue-dark':   { primary: '#60a5fa', dark: '#2563eb', bg: '#0f172a', surface: '#1e293b', text: '#e2e8f0', accent: '#1e3a5f', glow: 'rgba(96,165,250,0.3)' },
+  'red-light':   { primary: '#ef4444', dark: '#991b1b', bg: '#fff5f5', surface: '#ffffff', text: '#1e293b', accent: '#fca5a5', glow: 'rgba(239,68,68,0.4)' },
+  'red-dark':    { primary: '#f87171', dark: '#dc2626', bg: '#1a0a0a', surface: '#2d1515', text: '#fecaca', accent: '#4a1515', glow: 'rgba(248,113,113,0.3)' },
+};
+const theme = THEMES[platformTheme] || THEMES['blue-light'];
+
+// XP reporting
+let xpTimer = 0;
+let gameStartTime = 0;
+let totalPlaySeconds = 0;
+function reportXP() {
+  try { window.parent.postMessage({ type: 'xp', amount: 10 }, '*'); } catch(e) {}
+}
+
+// ============================================================
+// CANVAS SETUP
+// ============================================================
+const bgCanvas = document.getElementById('bgCanvas');
+const drawCanvas = document.getElementById('drawCanvas');
+const uiCanvas = document.getElementById('uiCanvas');
+const bgCtx = bgCanvas.getContext('2d');
+const drawCtx = drawCanvas.getContext('2d');
+const uiCtx = uiCanvas.getContext('2d');
+
+let W, H, dpr;
+
+function resizeCanvases() {
+  dpr = window.devicePixelRatio || 1;
+  W = window.innerWidth;
+  H = window.innerHeight;
+  [bgCanvas, drawCanvas, uiCanvas].forEach(c => {
+    c.width = W * dpr;
+    c.height = H * dpr;
+    c.style.width = W + 'px';
+    c.style.height = H + 'px';
+    c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+  });
+  // Preserve drawing content
+  if (drawingHistory.length > 0) {
+    replayHistory();
+  }
+  buildUI();
+  drawBackground();
+}
+
+window.addEventListener('resize', resizeCanvases);
+
+// ============================================================
+// AUDIO
+// ============================================================
+let audioCtx = null;
+let muted = false;
+
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+}
+
+function playTone(freq, duration, type='sine', volume=0.15) {
+  if (muted || !audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+}
+
+function playClick() { playTone(800, 0.06, 'sine', 0.1); }
+function playStamp() { playTone(523, 0.1); playTone(659, 0.1); }
+function playGlitter() {
+  playTone(1047, 0.08, 'sine', 0.08);
+  setTimeout(() => playTone(1319, 0.08, 'sine', 0.08), 40);
+  setTimeout(() => playTone(1568, 0.08, 'sine', 0.08), 80);
+}
+function playClear() { playTone(400, 0.15, 'triangle', 0.1); playTone(300, 0.2, 'triangle', 0.1); }
+function playUndo() { playTone(500, 0.08, 'square', 0.06); }
+function playColorPick() { playTone(660, 0.05, 'sine', 0.1); }
+function playToolSwitch() { playTone(440, 0.06, 'triangle', 0.08); }
+
+// ============================================================
+// GAME STATE
+// ============================================================
+const STATE = { START: 0, DRAWING: 1 };
+let gameState = STATE.START;
+let startScreenAlpha = 0;
+let startScreenTime = 0;
+
+// Drawing state
+let currentColor = '#FF69B4';
+let brushSize = 8;
+let currentTool = 'brush'; // brush, eraser, glitter, rainbow, stamp, spray, calligraphy, fill
+let selectedStamp = 0;
+let isDrawing = false;
+let lastX = 0, lastY = 0;
+let drawingHistory = []; // Array of actions for undo
+let currentStroke = null;
+let rainbowHue = 0;
+
+// Sparkle particles
+let sparkles = [];
+let bgSparkles = [];
+
+// UI layout
+let colorPalette = [];
+let brushSizes = [];
+let tools = [];
+let stamps = [];
+let uiButtons = [];
+let toolbarY = 0;
+let toolbarH = 0;
+let bottomBarY = 0;
+let bottomBarH = 0;
+let canvasAreaTop = 0;
+let canvasAreaBottom = 0;
+
+// Colors - bright kid-friendly palette
+const COLORS = [
+  '#FF69B4', // Hot Pink
+  '#FF1493', // Deep Pink
+  '#FF4500', // Red-Orange
+  '#FFD700', // Gold
+  '#32CD32', // Lime Green
+  '#00CED1', // Turquoise
+  '#4169E1', // Royal Blue
+  '#8A2BE2', // Blue Violet
+  '#FF6347', // Tomato
+  '#00FF7F', // Spring Green
+  '#FF00FF', // Magenta
+  '#1E90FF', // Dodger Blue
+  '#FFFFFF', // White
+  '#000000', // Black
+];
+
+// Stamp designs (drawn with canvas)
+const STAMP_TYPES = [
+  { name: 'Star', icon: '⭐' },
+  { name: 'Heart', icon: '💖' },
+  { name: 'Flower', icon: '🌸' },
+  { name: 'Butterfly', icon: '🦋' },
+  { name: 'Rainbow', icon: '🌈' },
+  { name: 'Sparkle', icon: '✨' },
+  { name: 'Crown', icon: '👑' },
+  { name: 'Gem', icon: '💎' },
+];
+
+// Tool definitions
+const TOOL_TYPES = [
+  { name: 'Brush', id: 'brush', icon: 'B' },
+  { name: 'Glitter', id: 'glitter', icon: 'G' },
+  { name: 'Rainbow', id: 'rainbow', icon: 'R' },
+  { name: 'Spray', id: 'spray', icon: 'S' },
+  { name: 'Calligraphy', id: 'calligraphy', icon: 'C' },
+  { name: 'Stamp', id: 'stamp', icon: 'T' },
+  { name: 'Eraser', id: 'eraser', icon: 'E' },
+];
+
+const BRUSH_SIZES = [4, 8, 16, 28];
+
+// ============================================================
+// BACKGROUND SPARKLES
+// ============================================================
+function initBgSparkles() {
+  bgSparkles = [];
+  for (let i = 0; i < 30; i++) {
+    bgSparkles.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      size: Math.random() * 3 + 1,
+      speed: Math.random() * 0.3 + 0.1,
+      alpha: Math.random(),
+      phase: Math.random() * Math.PI * 2,
+    });
+  }
+}
+
+function drawBackground() {
+  // Soft gradient background
+  const grad = bgCtx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#fdf2f8');
+  grad.addColorStop(0.5, '#fce7f3');
+  grad.addColorStop(1, '#fbcfe8');
+  bgCtx.fillStyle = grad;
+  bgCtx.fillRect(0, 0, W, H);
+
+  // Decorative circles
+  bgCtx.globalAlpha = 0.06;
+  for (let i = 0; i < 8; i++) {
+    const x = (W * (i * 0.13 + 0.05)) % W;
+    const y = (H * (i * 0.17 + 0.1)) % H;
+    const r = 40 + i * 20;
+    bgCtx.beginPath();
+    bgCtx.arc(x, y, r, 0, Math.PI * 2);
+    bgCtx.fillStyle = COLORS[i % COLORS.length];
+    bgCtx.fill();
+  }
+  bgCtx.globalAlpha = 1;
+}
+
+// ============================================================
+// UI BUILDING
+// ============================================================
+function buildUI() {
+  const isPortrait = H > W;
+  const padding = 6;
+  const topBarHeight = Math.max(52, Math.min(64, H * 0.08));
+  const bottomBarHeight = Math.max(56, Math.min(72, H * 0.09));
+
+  toolbarY = 0;
+  toolbarH = topBarHeight;
+  bottomBarY = H - bottomBarHeight;
+  bottomBarH = bottomBarHeight;
+  canvasAreaTop = toolbarH;
+  canvasAreaBottom = bottomBarY;
+
+  // Build color palette for bottom bar
+  colorPalette = [];
+  const colorSize = Math.min(32, (W - 20) / COLORS.length - 2);
+  const totalColorW = COLORS.length * (colorSize + 2);
+  const colorStartX = (W - totalColorW) / 2;
+  for (let i = 0; i < COLORS.length; i++) {
+    colorPalette.push({
+      x: colorStartX + i * (colorSize + 2),
+      y: bottomBarY + (bottomBarH - colorSize) / 2,
+      w: colorSize,
+      h: colorSize,
+      color: COLORS[i],
+    });
+  }
+
+  // Build top toolbar - tools on left, actions on right
+  uiButtons = [];
+
+  // Tool buttons (left side)
+  const btnSize = Math.min(38, (W * 0.55) / TOOL_TYPES.length - 2);
+  let tx = padding;
+  for (let i = 0; i < TOOL_TYPES.length; i++) {
+    uiButtons.push({
+      x: tx,
+      y: (toolbarH - btnSize) / 2,
+      w: btnSize,
+      h: btnSize,
+      type: 'tool',
+      toolId: TOOL_TYPES[i].id,
+      label: TOOL_TYPES[i].icon,
+      name: TOOL_TYPES[i].name,
+    });
+    tx += btnSize + 3;
+  }
+
+  // Brush size buttons
+  const sizeAreaX = tx + 6;
+  brushSizes = [];
+  for (let i = 0; i < BRUSH_SIZES.length; i++) {
+    const sz = Math.min(28, btnSize - 6);
+    brushSizes.push({
+      x: sizeAreaX + i * (sz + 3),
+      y: (toolbarH - sz) / 2,
+      w: sz,
+      h: sz,
+      size: BRUSH_SIZES[i],
+    });
+  }
+
+  // Action buttons (right side) - undo, clear, save, mute
+  const actionBtns = [
+    { id: 'undo', label: '↩' },
+    { id: 'clear', label: '✕' },
+    { id: 'save', label: '💾' },
+    { id: 'mute', label: muted ? '🔇' : '🔊' },
+  ];
+  let ax = W - padding;
+  for (let i = actionBtns.length - 1; i >= 0; i--) {
+    ax -= btnSize;
+    uiButtons.push({
+      x: ax,
+      y: (toolbarH - btnSize) / 2,
+      w: btnSize,
+      h: btnSize,
+      type: 'action',
+      actionId: actionBtns[i].id,
+      label: actionBtns[i].label,
+    });
+    ax -= 3;
+  }
+
+  // Stamp selector - appears when stamp tool selected
+  stamps = [];
+  if (currentTool === 'stamp') {
+    const stampSize = Math.min(40, (W - 20) / STAMP_TYPES.length - 2);
+    const totalStampW = STAMP_TYPES.length * (stampSize + 2);
+    const stampStartX = (W - totalStampW) / 2;
+    for (let i = 0; i < STAMP_TYPES.length; i++) {
+      stamps.push({
+        x: stampStartX + i * (stampSize + 2),
+        y: bottomBarY - stampSize - 8,
+        w: stampSize,
+        h: stampSize,
+        index: i,
+        icon: STAMP_TYPES[i].icon,
+      });
+    }
+  }
+}
+
+// ============================================================
+// UI DRAWING
+// ============================================================
+function drawUI() {
+  uiCtx.clearRect(0, 0, W, H);
+
+  if (gameState === STATE.START) {
+    drawStartScreen();
+    return;
+  }
+
+  // Top toolbar background
+  uiCtx.fillStyle = 'rgba(255,255,255,0.92)';
+  uiCtx.fillRect(0, 0, W, toolbarH);
+  uiCtx.fillStyle = '#f9a8d4';
+  uiCtx.fillRect(0, toolbarH - 2, W, 2);
+
+  // Bottom color bar background
+  uiCtx.fillStyle = 'rgba(255,255,255,0.92)';
+  uiCtx.fillRect(0, bottomBarY, W, bottomBarH);
+  uiCtx.fillStyle = '#f9a8d4';
+  uiCtx.fillRect(0, bottomBarY, W, 2);
+
+  // Draw tool buttons
+  for (const btn of uiButtons) {
+    const isActive = btn.type === 'tool' && btn.toolId === currentTool;
+    const r = 6;
+
+    // Button background
+    if (isActive) {
+      uiCtx.fillStyle = '#ec4899';
+      roundRect(uiCtx, btn.x, btn.y, btn.w, btn.h, r, true, false);
+    } else {
+      uiCtx.fillStyle = '#fce7f3';
+      roundRect(uiCtx, btn.x, btn.y, btn.w, btn.h, r, true, false);
+      uiCtx.strokeStyle = '#f9a8d4';
+      uiCtx.lineWidth = 1.5;
+      roundRect(uiCtx, btn.x, btn.y, btn.w, btn.h, r, false, true);
+    }
+
+    // Button label
+    uiCtx.fillStyle = isActive ? '#fff' : '#be185d';
+    uiCtx.font = `bold ${Math.min(16, btn.w * 0.5)}px sans-serif`;
+    uiCtx.textAlign = 'center';
+    uiCtx.textBaseline = 'middle';
+    uiCtx.fillText(btn.label, btn.x + btn.w / 2, btn.y + btn.h / 2);
+
+    // Tool name below (tiny)
+    if (btn.type === 'tool' && btn.name) {
+      uiCtx.fillStyle = isActive ? '#ec4899' : '#9ca3af';
+      uiCtx.font = `${Math.max(7, btn.w * 0.22)}px sans-serif`;
+      uiCtx.fillText(btn.name, btn.x + btn.w / 2, btn.y + btn.h + 1);
+    }
+  }
+
+  // Draw brush size buttons
+  for (const sz of brushSizes) {
+    const isActive = brushSize === sz.size;
+    uiCtx.fillStyle = isActive ? '#ec4899' : '#fce7f3';
+    roundRect(uiCtx, sz.x, sz.y, sz.w, sz.h, 4, true, false);
+    if (!isActive) {
+      uiCtx.strokeStyle = '#f9a8d4';
+      uiCtx.lineWidth = 1;
+      roundRect(uiCtx, sz.x, sz.y, sz.w, sz.h, 4, false, true);
+    }
+
+    // Draw circle preview
+    const previewR = Math.min(sz.w * 0.35, sz.size * 0.6);
+    uiCtx.beginPath();
+    uiCtx.arc(sz.x + sz.w / 2, sz.y + sz.h / 2, previewR, 0, Math.PI * 2);
+    uiCtx.fillStyle = isActive ? '#fff' : '#ec4899';
+    uiCtx.fill();
+  }
+
+  // Draw color palette
+  for (const c of colorPalette) {
+    const isActive = currentColor === c.color;
+    // Selection ring
+    if (isActive) {
+      uiCtx.strokeStyle = '#000';
+      uiCtx.lineWidth = 3;
+      roundRect(uiCtx, c.x - 2, c.y - 2, c.w + 4, c.h + 4, 6, false, true);
+    }
+
+    uiCtx.fillStyle = c.color;
+    roundRect(uiCtx, c.x, c.y, c.w, c.h, 4, true, false);
+
+    // Border for white/light colors
+    if (c.color === '#FFFFFF' || c.color === '#FFD700') {
+      uiCtx.strokeStyle = '#ddd';
+      uiCtx.lineWidth = 1;
+      roundRect(uiCtx, c.x, c.y, c.w, c.h, 4, false, true);
+    }
+  }
+
+  // Draw stamp selector
+  if (currentTool === 'stamp') {
+    // Background for stamp bar
+    uiCtx.fillStyle = 'rgba(255,255,255,0.92)';
+    const stampBarY = stamps[0] ? stamps[0].y - 4 : bottomBarY - 48;
+    uiCtx.fillRect(0, stampBarY, W, stamps[0] ? stamps[0].h + 8 : 44);
+    uiCtx.fillStyle = '#f9a8d4';
+    uiCtx.fillRect(0, stampBarY, W, 1.5);
+
+    for (const s of stamps) {
+      const isActive = selectedStamp === s.index;
+      uiCtx.fillStyle = isActive ? '#fce7f3' : 'rgba(255,255,255,0)';
+      roundRect(uiCtx, s.x, s.y, s.w, s.h, 6, true, false);
+      if (isActive) {
+        uiCtx.strokeStyle = '#ec4899';
+        uiCtx.lineWidth = 2;
+        roundRect(uiCtx, s.x, s.y, s.w, s.h, 6, false, true);
+      }
+      uiCtx.font = `${Math.min(24, s.w * 0.6)}px sans-serif`;
+      uiCtx.textAlign = 'center';
+      uiCtx.textBaseline = 'middle';
+      uiCtx.fillText(s.icon, s.x + s.w / 2, s.y + s.h / 2);
+    }
+  }
+
+  // Current color/tool indicator
+  drawCurrentToolIndicator();
+
+  // Draw sparkles
+  drawSparkles();
+}
+
+function drawCurrentToolIndicator() {
+  // Small preview of current brush in top-right area near the action buttons
+  const previewX = W / 2;
+  const previewY = toolbarH / 2;
+  const previewR = Math.min(brushSize, 14);
+
+  if (currentTool === 'eraser') {
+    uiCtx.fillStyle = '#f3f4f6';
+    uiCtx.strokeStyle = '#9ca3af';
+    uiCtx.lineWidth = 1.5;
+    uiCtx.beginPath();
+    uiCtx.arc(previewX, previewY, previewR, 0, Math.PI * 2);
+    uiCtx.fill();
+    uiCtx.stroke();
+  } else if (currentTool === 'rainbow') {
+    const grad = uiCtx.createLinearGradient(previewX - previewR, previewY, previewX + previewR, previewY);
+    grad.addColorStop(0, '#ff0000');
+    grad.addColorStop(0.33, '#00ff00');
+    grad.addColorStop(0.66, '#0000ff');
+    grad.addColorStop(1, '#ff00ff');
+    uiCtx.fillStyle = grad;
+    uiCtx.beginPath();
+    uiCtx.arc(previewX, previewY, previewR, 0, Math.PI * 2);
+    uiCtx.fill();
+  } else {
+    uiCtx.fillStyle = currentColor;
+    uiCtx.beginPath();
+    uiCtx.arc(previewX, previewY, previewR, 0, Math.PI * 2);
+    uiCtx.fill();
+  }
+}
+
+// ============================================================
+// START SCREEN
+// ============================================================
+function drawStartScreen() {
+  startScreenTime += 0.016;
+  startScreenAlpha = Math.min(1, startScreenAlpha + 0.02);
+
+  uiCtx.globalAlpha = startScreenAlpha;
+
+  // Beautiful gradient background
+  const grad = uiCtx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.7);
+  grad.addColorStop(0, '#fdf2f8');
+  grad.addColorStop(0.4, '#fce7f3');
+  grad.addColorStop(0.7, '#fbcfe8');
+  grad.addColorStop(1, '#f9a8d4');
+  uiCtx.fillStyle = grad;
+  uiCtx.fillRect(0, 0, W, H);
+
+  // Floating sparkles on start screen
+  for (let i = 0; i < 20; i++) {
+    const x = W * 0.1 + Math.sin(startScreenTime * 0.5 + i * 1.3) * W * 0.4 + W * 0.4 * (i / 20);
+    const y = H * 0.1 + Math.cos(startScreenTime * 0.7 + i * 0.9) * H * 0.3 + H * 0.3 * (i / 20);
+    const sz = 3 + Math.sin(startScreenTime * 2 + i) * 2;
+    const alpha = 0.3 + Math.sin(startScreenTime * 3 + i * 0.7) * 0.3;
+    uiCtx.globalAlpha = alpha * startScreenAlpha;
+    drawStarShape(uiCtx, x, y, sz, COLORS[i % COLORS.length]);
+  }
+  uiCtx.globalAlpha = startScreenAlpha;
+
+  // Title with bouncy animation
+  const titleY = H * 0.28 + Math.sin(startScreenTime * 1.5) * 8;
+  const titleSize = Math.min(48, W * 0.1);
+
+  // Title shadow
+  uiCtx.fillStyle = 'rgba(236,72,153,0.2)';
+  uiCtx.font = `bold ${titleSize}px sans-serif`;
+  uiCtx.textAlign = 'center';
+  uiCtx.textBaseline = 'middle';
+  uiCtx.fillText('✨ Drawing Pad ✨', W / 2 + 2, titleY + 2);
+
+  // Title
+  const titleGrad = uiCtx.createLinearGradient(W * 0.2, titleY, W * 0.8, titleY);
+  titleGrad.addColorStop(0, '#ec4899');
+  titleGrad.addColorStop(0.3, '#a855f7');
+  titleGrad.addColorStop(0.6, '#3b82f6');
+  titleGrad.addColorStop(1, '#ec4899');
+  uiCtx.fillStyle = titleGrad;
+  uiCtx.fillText('✨ Drawing Pad ✨', W / 2, titleY);
+
+  // Subtitle
+  uiCtx.font = `${Math.min(18, W * 0.04)}px sans-serif`;
+  uiCtx.fillStyle = '#be185d';
+  uiCtx.fillText('Create Beautiful Art!', W / 2, titleY + titleSize * 0.8);
+
+  // Draw some preview tools/icons
+  const previewY = H * 0.48;
+  const icons = ['🎨', '✨', '🌈', '🦋', '💖', '👑'];
+  const iconSize = Math.min(36, W * 0.07);
+  const totalIconW = icons.length * (iconSize + 12);
+  const iconStartX = (W - totalIconW) / 2;
+  for (let i = 0; i < icons.length; i++) {
+    const ix = iconStartX + i * (iconSize + 12) + iconSize / 2;
+    const iy = previewY + Math.sin(startScreenTime * 2 + i * 0.8) * 6;
+    uiCtx.font = `${iconSize}px sans-serif`;
+    uiCtx.fillText(icons[i], ix, iy);
+  }
+
+  // Tap to start button
+  const btnW = Math.min(240, W * 0.6);
+  const btnH = 56;
+  const btnX = (W - btnW) / 2;
+  const btnY = H * 0.64;
+  const pulse = 1 + Math.sin(startScreenTime * 3) * 0.03;
+
+  uiCtx.save();
+  uiCtx.translate(btnX + btnW / 2, btnY + btnH / 2);
+  uiCtx.scale(pulse, pulse);
+  uiCtx.translate(-(btnX + btnW / 2), -(btnY + btnH / 2));
+
+  // Button glow
+  uiCtx.shadowColor = '#ec4899';
+  uiCtx.shadowBlur = 20;
+  const btnGrad = uiCtx.createLinearGradient(btnX, btnY, btnX + btnW, btnY + btnH);
+  btnGrad.addColorStop(0, '#ec4899');
+  btnGrad.addColorStop(1, '#a855f7');
+  uiCtx.fillStyle = btnGrad;
+  roundRect(uiCtx, btnX, btnY, btnW, btnH, 28, true, false);
+  uiCtx.shadowBlur = 0;
+
+  uiCtx.fillStyle = '#fff';
+  uiCtx.font = `bold ${Math.min(22, W * 0.05)}px sans-serif`;
+  uiCtx.fillText('🎨  Tap to Draw!', btnX + btnW / 2, btnY + btnH / 2);
+  uiCtx.restore();
+
+  // Credits
+  uiCtx.fillStyle = '#9ca3af';
+  uiCtx.font = `${Math.min(14, W * 0.03)}px sans-serif`;
+  uiCtx.fillText('Made by Areli', W / 2, H * 0.82);
+  uiCtx.fillText('Yoel The G', W / 2, H * 0.82 + 20);
+
+  uiCtx.globalAlpha = 1;
+}
+
+// ============================================================
+// DRAWING TOOLS
+// ============================================================
+function startDraw(x, y) {
+  if (y < canvasAreaTop || y > canvasAreaBottom) return;
+  if (currentTool === 'stamp') return; // stamps are single-tap
+
+  isDrawing = true;
+  lastX = x;
+  lastY = y;
+
+  currentStroke = {
+    tool: currentTool,
+    color: currentColor,
+    size: brushSize,
+    points: [{ x, y }],
+    rainbowStart: rainbowHue,
+  };
+
+  // Draw single dot
+  drawPoint(x, y);
+}
+
+function continueDraw(x, y) {
+  if (!isDrawing || y < canvasAreaTop - 20 || y > canvasAreaBottom + 20) return;
+
+  currentStroke.points.push({ x, y });
+  drawSegment(lastX, lastY, x, y);
+  lastX = x;
+  lastY = y;
+}
+
+function endDraw() {
+  if (!isDrawing) return;
+  isDrawing = false;
+  if (currentStroke && currentStroke.points.length > 0) {
+    drawingHistory.push(currentStroke);
+    // Limit history to prevent memory issues
+    if (drawingHistory.length > 200) drawingHistory.shift();
+  }
+  currentStroke = null;
+}
+
+function drawPoint(x, y) {
+  switch (currentTool) {
+    case 'brush':
+      drawCtx.fillStyle = currentColor;
+      drawCtx.beginPath();
+      drawCtx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+      drawCtx.fill();
+      break;
+    case 'eraser':
+      drawCtx.save();
+      drawCtx.globalCompositeOperation = 'destination-out';
+      drawCtx.beginPath();
+      drawCtx.arc(x, y, brushSize * 1.5, 0, Math.PI * 2);
+      drawCtx.fill();
+      drawCtx.restore();
+      break;
+    case 'glitter':
+      drawGlitterAt(x, y);
+      break;
+    case 'rainbow':
+      drawCtx.fillStyle = `hsl(${rainbowHue}, 100%, 50%)`;
+      drawCtx.beginPath();
+      drawCtx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+      drawCtx.fill();
+      rainbowHue = (rainbowHue + 3) % 360;
+      break;
+    case 'spray':
+      drawSprayAt(x, y);
+      break;
+    case 'calligraphy':
+      drawCtx.fillStyle = currentColor;
+      drawCtx.beginPath();
+      drawCtx.ellipse(x, y, brushSize, brushSize / 3, Math.PI / 4, 0, Math.PI * 2);
+      drawCtx.fill();
+      break;
+  }
+}
+
+function drawSegment(x1, y1, x2, y2) {
+  const dist = Math.hypot(x2 - x1, y2 - y1);
+  const steps = Math.max(1, Math.ceil(dist / (brushSize * 0.3)));
+
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const x = x1 + (x2 - x1) * t;
+    const y = y1 + (y2 - y1) * t;
+
+    switch (currentTool) {
+      case 'brush':
+        drawCtx.fillStyle = currentColor;
+        drawCtx.beginPath();
+        drawCtx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+        drawCtx.fill();
+        break;
+      case 'eraser':
+        drawCtx.save();
+        drawCtx.globalCompositeOperation = 'destination-out';
+        drawCtx.beginPath();
+        drawCtx.arc(x, y, brushSize * 1.5, 0, Math.PI * 2);
+        drawCtx.fill();
+        drawCtx.restore();
+        break;
+      case 'glitter':
+        if (i % 2 === 0) drawGlitterAt(x, y);
+        break;
+      case 'rainbow':
+        drawCtx.fillStyle = `hsl(${rainbowHue}, 100%, 50%)`;
+        drawCtx.beginPath();
+        drawCtx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+        drawCtx.fill();
+        rainbowHue = (rainbowHue + 2) % 360;
+        break;
+      case 'spray':
+        if (i % 3 === 0) drawSprayAt(x, y);
+        break;
+      case 'calligraphy': {
+        const angle = Math.atan2(y2 - y1, x2 - x1);
+        drawCtx.fillStyle = currentColor;
+        drawCtx.save();
+        drawCtx.translate(x, y);
+        drawCtx.rotate(angle);
+        drawCtx.beginPath();
+        drawCtx.ellipse(0, 0, brushSize, brushSize / 3, 0, 0, Math.PI * 2);
+        drawCtx.fill();
+        drawCtx.restore();
+        break;
+      }
+    }
+  }
+}
+
+function drawGlitterAt(x, y) {
+  const count = 8 + Math.floor(brushSize / 2);
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = Math.random() * brushSize * 2;
+    const gx = x + Math.cos(angle) * dist;
+    const gy = y + Math.sin(angle) * dist;
+    const sz = Math.random() * 3 + 1;
+    const hue = Math.random() * 60 - 30; // Vary around current color
+    drawCtx.globalAlpha = 0.5 + Math.random() * 0.5;
+
+    // Parse current color to create glitter variation
+    const colors = [currentColor, '#FFD700', '#FF69B4', '#E0E0E0', '#C0C0C0'];
+    drawCtx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+
+    if (Math.random() > 0.5) {
+      // Star shape
+      drawStarShape(drawCtx, gx, gy, sz, drawCtx.fillStyle);
+    } else {
+      // Diamond shape
+      drawCtx.beginPath();
+      drawCtx.moveTo(gx, gy - sz);
+      drawCtx.lineTo(gx + sz * 0.6, gy);
+      drawCtx.lineTo(gx, gy + sz);
+      drawCtx.lineTo(gx - sz * 0.6, gy);
+      drawCtx.closePath();
+      drawCtx.fill();
+    }
+    drawCtx.globalAlpha = 1;
+  }
+
+  // Add sparkle particles
+  for (let i = 0; i < 3; i++) {
+    sparkles.push({
+      x: x + (Math.random() - 0.5) * brushSize * 3,
+      y: y + (Math.random() - 0.5) * brushSize * 3,
+      size: Math.random() * 4 + 2,
+      life: 1,
+      decay: 0.02 + Math.random() * 0.02,
+      color: ['#FFD700', '#FF69B4', '#E0E0E0', '#C0C0C0'][Math.floor(Math.random() * 4)],
+      vy: -Math.random() * 1.5,
+    });
+  }
+}
+
+function drawSprayAt(x, y) {
+  const count = 15 + brushSize;
+  drawCtx.fillStyle = currentColor;
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = Math.random() * brushSize * 2.5;
+    const sx = x + Math.cos(angle) * dist;
+    const sy = y + Math.sin(angle) * dist;
+    const sz = Math.random() * 2 + 0.5;
+    drawCtx.globalAlpha = 0.2 + Math.random() * 0.4;
+    drawCtx.beginPath();
+    drawCtx.arc(sx, sy, sz, 0, Math.PI * 2);
+    drawCtx.fill();
+  }
+  drawCtx.globalAlpha = 1;
+}
+
+function placeStamp(x, y) {
+  const sz = brushSize * 3;
+  drawCtx.font = `${sz}px sans-serif`;
+  drawCtx.textAlign = 'center';
+  drawCtx.textBaseline = 'middle';
+  drawCtx.fillText(STAMP_TYPES[selectedStamp].icon, x, y);
+
+  playStamp();
+
+  // Add sparkles around stamp
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2;
+    sparkles.push({
+      x: x + Math.cos(angle) * sz * 0.7,
+      y: y + Math.sin(angle) * sz * 0.7,
+      size: 3,
+      life: 1,
+      decay: 0.015,
+      color: COLORS[Math.floor(Math.random() * 6)],
+      vy: -1,
+    });
+  }
+
+  drawingHistory.push({
+    tool: 'stamp',
+    stampIndex: selectedStamp,
+    x, y,
+    size: brushSize,
+  });
+}
+
+// ============================================================
+// HISTORY / UNDO
+// ============================================================
+function undo() {
+  if (drawingHistory.length === 0) return;
+  drawingHistory.pop();
+  replayHistory();
+  playUndo();
+}
+
+function replayHistory() {
+  drawCtx.clearRect(0, 0, W, H);
+  const savedHue = rainbowHue;
+  for (const action of drawingHistory) {
+    if (action.tool === 'stamp') {
+      const sz = action.size * 3;
+      drawCtx.font = `${sz}px sans-serif`;
+      drawCtx.textAlign = 'center';
+      drawCtx.textBaseline = 'middle';
+      drawCtx.fillText(STAMP_TYPES[action.stampIndex].icon, action.x, action.y);
+    } else {
+      const oldTool = currentTool;
+      const oldColor = currentColor;
+      const oldSize = brushSize;
+      currentTool = action.tool;
+      currentColor = action.color;
+      brushSize = action.size;
+      rainbowHue = action.rainbowStart || 0;
+
+      if (action.points.length === 1) {
+        drawPoint(action.points[0].x, action.points[0].y);
+      } else {
+        for (let i = 1; i < action.points.length; i++) {
+          drawSegment(
+            action.points[i - 1].x, action.points[i - 1].y,
+            action.points[i].x, action.points[i].y
+          );
+        }
+      }
+
+      currentTool = oldTool;
+      currentColor = oldColor;
+      brushSize = oldSize;
+    }
+  }
+  rainbowHue = savedHue;
+}
+
+function clearCanvas() {
+  drawingHistory = [];
+  drawCtx.clearRect(0, 0, W, H);
+  playClear();
+
+  // Celebration sparkles
+  for (let i = 0; i < 20; i++) {
+    sparkles.push({
+      x: Math.random() * W,
+      y: Math.random() * H * 0.5 + H * 0.25,
+      size: Math.random() * 5 + 2,
+      life: 1,
+      decay: 0.01,
+      color: COLORS[Math.floor(Math.random() * COLORS.length)],
+      vy: -2 - Math.random() * 2,
+    });
+  }
+}
+
+function saveCanvas() {
+  // Create a temp canvas with just the drawing
+  const saveCanvas = document.createElement('canvas');
+  saveCanvas.width = W * dpr;
+  saveCanvas.height = H * dpr;
+  const saveCtx = saveCanvas.getContext('2d');
+  saveCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  // White background
+  saveCtx.fillStyle = '#fff';
+  saveCtx.fillRect(0, 0, W, H);
+
+  // Copy drawing
+  saveCtx.drawImage(drawCanvas, 0, 0, W, H);
+
+  // Download
+  const link = document.createElement('a');
+  link.download = 'my-drawing.png';
+  link.href = saveCanvas.toDataURL('image/png');
+  link.click();
+
+  playGlitter();
+}
+
+// ============================================================
+// SPARKLE PARTICLES
+// ============================================================
+function updateSparkles() {
+  for (let i = sparkles.length - 1; i >= 0; i--) {
+    const s = sparkles[i];
+    s.life -= s.decay;
+    s.y += s.vy;
+    s.vy *= 0.98;
+    if (s.life <= 0) {
+      sparkles.splice(i, 1);
+    }
+  }
+  // Limit
+  if (sparkles.length > 50) sparkles.splice(0, sparkles.length - 50);
+}
+
+function drawSparkles() {
+  for (const s of sparkles) {
+    uiCtx.globalAlpha = s.life;
+    drawStarShape(uiCtx, s.x, s.y, s.size, s.color);
+  }
+  uiCtx.globalAlpha = 1;
+
+  // Background sparkles
+  const t = performance.now() / 1000;
+  for (const s of bgSparkles) {
+    const alpha = 0.15 + 0.15 * Math.sin(t * 2 + s.phase);
+    uiCtx.globalAlpha = alpha;
+    drawStarShape(uiCtx, s.x, s.y, s.size, '#f9a8d4');
+  }
+  uiCtx.globalAlpha = 1;
+}
+
+// ============================================================
+// SHAPE HELPERS
+// ============================================================
+function drawStarShape(ctx, x, y, size, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  for (let i = 0; i < 4; i++) {
+    const angle = (i / 4) * Math.PI * 2 - Math.PI / 2;
+    const ox = Math.cos(angle) * size;
+    const oy = Math.sin(angle) * size;
+    if (i === 0) ctx.moveTo(x + ox, y + oy);
+    else ctx.lineTo(x + ox, y + oy);
+    const midAngle = angle + Math.PI / 4;
+    const mx = Math.cos(midAngle) * size * 0.4;
+    const my = Math.sin(midAngle) * size * 0.4;
+    ctx.lineTo(x + mx, y + my);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+  if (fill) ctx.fill();
+  if (stroke) ctx.stroke();
+}
+
+// ============================================================
+// INPUT HANDLING
+// ============================================================
+function getPos(e) {
+  if (e.touches && e.touches.length > 0) {
+    return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }
+  return { x: e.clientX, y: e.clientY };
+}
+
+function handleStart(e) {
+  e.preventDefault();
+  initAudio();
+
+  const pos = getPos(e);
+
+  if (gameState === STATE.START) {
+    gameState = STATE.DRAWING;
+    gameStartTime = performance.now();
+    buildUI();
+    drawBackground();
+    playGlitter();
+    return;
+  }
+
+  // Check UI interactions first
+  if (handleUIClick(pos.x, pos.y)) return;
+
+  // Drawing on canvas
+  if (currentTool === 'stamp' && pos.y >= canvasAreaTop && pos.y <= canvasAreaBottom) {
+    placeStamp(pos.x, pos.y);
+    return;
+  }
+
+  startDraw(pos.x, pos.y);
+}
+
+function handleMove(e) {
+  e.preventDefault();
+  if (gameState !== STATE.DRAWING) return;
+  const pos = getPos(e);
+  continueDraw(pos.x, pos.y);
+}
+
+function handleEnd(e) {
+  e.preventDefault();
+  endDraw();
+}
+
+function handleUIClick(x, y) {
+  // Check tool buttons
+  for (const btn of uiButtons) {
+    if (x >= btn.x && x <= btn.x + btn.w && y >= btn.y && y <= btn.y + btn.h) {
+      if (btn.type === 'tool') {
+        currentTool = btn.toolId;
+        playToolSwitch();
+        buildUI(); // Rebuild for stamp bar visibility
+      } else if (btn.type === 'action') {
+        switch (btn.actionId) {
+          case 'undo': undo(); break;
+          case 'clear': clearCanvas(); break;
+          case 'save': saveCanvas(); break;
+          case 'mute':
+            muted = !muted;
+            buildUI();
+            break;
+        }
+        playClick();
+      }
+      return true;
+    }
+  }
+
+  // Check brush sizes
+  for (const sz of brushSizes) {
+    if (x >= sz.x && x <= sz.x + sz.w && y >= sz.y && y <= sz.y + sz.h) {
+      brushSize = sz.size;
+      playClick();
+      return true;
+    }
+  }
+
+  // Check color palette
+  for (const c of colorPalette) {
+    if (x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) {
+      currentColor = c.color;
+      if (currentTool === 'eraser') currentTool = 'brush';
+      playColorPick();
+      return true;
+    }
+  }
+
+  // Check stamp selector
+  for (const s of stamps) {
+    if (x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h) {
+      selectedStamp = s.index;
+      playClick();
+      return true;
+    }
+  }
+
+  // If click is in toolbar or bottom bar, consume but don't draw
+  if (y < canvasAreaTop || y > canvasAreaBottom) return true;
+
+  return false;
+}
+
+// Event listeners
+uiCanvas.addEventListener('touchstart', handleStart, { passive: false });
+uiCanvas.addEventListener('touchmove', handleMove, { passive: false });
+uiCanvas.addEventListener('touchend', handleEnd, { passive: false });
+uiCanvas.addEventListener('mousedown', handleStart);
+uiCanvas.addEventListener('mousemove', handleMove);
+uiCanvas.addEventListener('mouseup', handleEnd);
+uiCanvas.addEventListener('mouseleave', handleEnd);
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (gameState !== STATE.DRAWING) return;
+  switch (e.key) {
+    case 'z': if (e.ctrlKey || e.metaKey) undo(); break;
+    case 'b': currentTool = 'brush'; buildUI(); break;
+    case 'e': currentTool = 'eraser'; buildUI(); break;
+    case 'g': currentTool = 'glitter'; buildUI(); break;
+    case 'r': currentTool = 'rainbow'; buildUI(); break;
+    case 's': if (!e.ctrlKey && !e.metaKey) { currentTool = 'spray'; buildUI(); } break;
+    case '+': case '=': brushSize = Math.min(28, brushSize + 4); break;
+    case '-': brushSize = Math.max(4, brushSize - 4); break;
+  }
+});
+
+// ============================================================
+// GAME LOOP
+// ============================================================
+let lastTime = 0;
+let xpAccumulator = 0;
+
+function gameLoop(timestamp) {
+  const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+  lastTime = timestamp;
+
+  // XP reporting
+  if (gameState === STATE.DRAWING) {
+    xpAccumulator += dt;
+    if (xpAccumulator >= 60) {
+      xpAccumulator -= 60;
+      reportXP();
+    }
+  }
+
+  updateSparkles();
+  drawUI();
+
+  requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+// INIT
+// ============================================================
+resizeCanvases();
+initBgSparkles();
+requestAnimationFrame(gameLoop);
+
+</script>
+</body>
+</html>
