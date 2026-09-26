@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import ThemeToggle from "./ThemeToggle";
+import Logo from "./Logo";
 
 export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -15,19 +16,14 @@ export default function Navbar() {
         borderBottom: "2px solid var(--nav-border)",
       }}
     >
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2 sm:py-3">
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-1.5 sm:py-2">
         {/* Logo */}
         <Link
           href="/"
-          className="flex items-center gap-2 touch-target"
+          className="flex items-center touch-target rounded-xl"
           onClick={() => setMenuOpen(false)}
         >
-          <span className="text-2xl sm:text-3xl font-fredoka font-bold text-gradient">
-            Yo&euml;l The G
-          </span>
-          <span className="text-xl sm:text-2xl" aria-hidden="true">
-            🎮
-          </span>
+          <Logo sizes="68px" className="h-[52px] w-auto sm:h-[60px]" />
         </Link>
 
         {/* Desktop nav items */}

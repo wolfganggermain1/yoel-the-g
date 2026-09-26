@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { getApprovedDevelopers, getGamesByDeveloper, getDevelopersForGame } from '@/lib/db';
 import GameCard from '@/components/GameCard';
 import GameCreator from '@/components/GameCreator';
+import Logo from '@/components/Logo';
 
 type Developer = {
   id: number;
@@ -68,7 +69,7 @@ export default async function HomePage() {
   return (
     <div className="min-h-screen pb-20">
       {/* Hero Section */}
-      <section className="relative px-4 pt-20 pb-14 sm:pt-28 sm:pb-20 flex flex-col items-center text-center">
+      <section className="relative px-4 pt-8 pb-14 sm:pt-12 sm:pb-20 flex flex-col items-center text-center">
         <div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] sm:w-[500px] sm:h-[500px] rounded-full opacity-20 blur-3xl pointer-events-none"
           style={{
@@ -77,16 +78,11 @@ export default async function HomePage() {
           }}
         />
 
-        <h1
-          className="
-            relative
-            text-gradient font-fredoka font-bold
-            text-5xl sm:text-7xl md:text-8xl lg:text-9xl
-            tracking-tight
-            hero-float
-          "
-        >
-          Yo&euml;l The G
+        <h1 className="relative hero-float">
+          <Logo
+            sizes="(min-width: 1024px) 440px, (min-width: 768px) 400px, (min-width: 640px) 340px, 250px"
+            className="w-[250px] h-auto sm:w-[340px] md:w-[400px] lg:w-[440px] drop-shadow-xl"
+          />
         </h1>
 
         <p

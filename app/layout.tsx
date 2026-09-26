@@ -12,20 +12,35 @@ const fredoka = Fredoka({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_BASE_URL || "https://yoeltheg.wolfgangandteam.com"
+  ),
   title: "YTG - Family Gaming Platform",
   description:
     "A fun, colorful family gaming platform for kids ages 3+. Play games, earn XP, and level up!",
   manifest: "/manifest.json",
+  // Tab favicons use the egg + controller mark (the full logo is unreadable
+  // at 16-48px); home-screen and PWA icons use the full logo.
   icons: {
     icon: [
-      { url: "/icons/favicon-16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicon.ico", sizes: "16x16 32x32 48x48" },
       { url: "/icons/favicon-32.png", sizes: "32x32", type: "image/png" },
-      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/favicon.ico" },
+      { url: "/icons/favicon-16.png", sizes: "16x16", type: "image/png" },
     ],
     apple: [
       { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
     ],
+  },
+  openGraph: {
+    type: "website",
+    siteName: "Yoël The G",
+    images: [
+      { url: "/brand/og-image.jpg", width: 1200, height: 630, alt: "Yoël The G" },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    images: ["/brand/og-image.jpg"],
   },
   appleWebApp: {
     capable: true,
