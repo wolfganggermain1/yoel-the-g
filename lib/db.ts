@@ -154,6 +154,7 @@ function initializeDb(): void {
   insertDev.run("Ezekiel", "ezekiel", "\u26A1");
   insertDev.run("Areli", "areli", "\uD83E\uDD81");
   insertDev.run("Chad", "chad", "\uD83D\uDE0E");
+  insertDev.run("Dada", "dada", "\uD83D\uDC68\u200D\uD83C\uDFEB");
 
   // ---- Look up developer IDs ----
   const yoelDev = d.prepare("SELECT id FROM developers WHERE slug = 'yoel'").get() as { id: number } | undefined;
@@ -164,6 +165,8 @@ function initializeDb(): void {
   const areliId = areliDev?.id ?? 3;
   const chadDev = d.prepare("SELECT id FROM developers WHERE slug = 'chad'").get() as { id: number } | undefined;
   const chadId = chadDev?.id ?? 4;
+  const dadaDev = d.prepare("SELECT id FROM developers WHERE slug = 'dada'").get() as { id: number } | undefined;
+  const dadaId = dadaDev?.id ?? 5;
 
   // ---- Seed games (idempotent) ----
   const insertGame = d.prepare(`
@@ -331,6 +334,15 @@ function initializeDb(): void {
     yoelId, "🤖", "/games/ispy/index.html", "arcade",
     "1 Player", "Keyboard / Touch", ["Score", "Levels", "Sound", "3D", "Boss"],
     [{ devId: yoelId, role: "lead" }, { devId: ezekielId, role: "co-author" }, { devId: areliId, role: "co-author" }]
+  );
+
+  // --- Dada's games ---
+  seedGame(
+    "Dada's Driving School", "dadas-driving-school",
+    "Learn the Highway Code by driving it in 3D: STOP and give way lines, zebra crossings, lane arrows, overtaking, yellow box and roundabouts!",
+    dadaId, "\uD83D\uDEA6", "/games/dadas-driving-school/index.html", "educational",
+    "1 Player", "Keyboard / Touch", ["3D", "Lessons", "Stars", "Sound", "Driving Test"],
+    [{ devId: dadaId, role: "lead" }]
   );
 
   // ---- Migrate: consolidate Yoel's email to yoeltheg7@gmail.com ----
