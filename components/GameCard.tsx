@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { TUBE_PATH } from '@/lib/tube';
 
 type Developer = {
   id: number;
@@ -63,7 +64,7 @@ export default function GameCard({ game, developer, authors, index = 0 }: GameCa
 
   return (
     <Link
-      href={`/play/${game.slug}`}
+      href={game.game_path === TUBE_PATH ? TUBE_PATH : `/play/${game.slug}`}
       className="card-pop-in block group"
       style={{ animationDelay: `${index * 80}ms` }}
     >

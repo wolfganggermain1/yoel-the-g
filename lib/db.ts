@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
 import bcrypt from "bcryptjs";
+import { TUBE_PATH, type TubeGame, type TubeVideo } from "./tube";
 
 const DB_PATH = path.join(process.cwd(), "data", "yoel-the-g.db");
 
@@ -115,6 +116,33 @@ function initializeDb(): void {
   ).get() as { cnt: number };
   if (hasFileSizeCol.cnt === 0) {
     d.exec(`ALTER TABLE games ADD COLUMN file_size_bytes INTEGER`);
+  }
+
+  // ---- YTG Tube: parent-approved YouTube videos ----
+  // Starter videos are seeded only when the table is first created, so videos
+  // an admin deletes later do not come back on the next restart.
+  const tubeTableExists = d.prepare(
+    `SELECT COUNT(*) as cnt FROM sqlite_master WHERE type = 'table' AND name = 'tube_videos'`
+  ).get() as { cnt: number };
+  d.exec(`
+    CREATE TABLE IF NOT EXISTS tube_videos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      youtube_id TEXT UNIQUE NOT NULL,
+      title TEXT NOT NULL,
+      channel TEXT NOT NULL DEFAULT '',
+      category TEXT NOT NULL DEFAULT 'other',
+      duration_seconds INTEGER,
+      visible INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+  if (tubeTableExists.cnt === 0) {
+    const insertVideo = d.prepare(`
+      INSERT OR IGNORE INTO tube_videos (youtube_id, title, channel, category, duration_seconds)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    // Feed shows newest first, so insert in reverse display order.
+    for (const v of [...STARTER_TUBE_VIDEOS].reverse()) insertVideo.run(...v);
   }
 
   // ---- Seed developers (idempotent) ----
@@ -290,6 +318,14 @@ function initializeDb(): void {
   );
 
   seedGame(
+    "YTG Tube", "ytg-tube",
+    "Watch parent-approved videos and jump into YTG games — all in one place. Works offline with games!",
+    areliId, "📺", TUBE_PATH, "creative",
+    "1 Player", "Mouse / Touch", ["Videos", "Games", "Offline"],
+    [{ devId: areliId, role: "lead" }]
+  );
+
+  seedGame(
     "iSPY", "ispy",
     "3D Fire & Ice robot team! Swap heroes, freeze and melt Glitch Bots with robot buddy i-SPY, and beat the MEGA GLITCH!",
     yoelId, "🤖", "/games/ispy/index.html", "arcade",
@@ -344,6 +380,28 @@ function initializeDb(): void {
   insertFee.run("game_generation", 500);   // $5.00
   insertFee.run("game_publishing", 1000);  // $10.00
 }
+
+// Starter YTG Tube videos, checked embeddable via YouTube oEmbed on 2026-09-26.
+// [youtube_id, title, channel, category, duration_seconds]
+const STARTER_TUBE_VIDEOS: [string, string, string, string, number][] = [
+  ["UW6H5dAPuhY", "How To Draw A Cute Ice Cream Cone", "Art for Kids Hub", "drawing", 213],
+  ["wcB40K2PEws", "Why Do We Blink?", "SciShow Kids", "science", 183],
+  ["6Eyz9qUAYRg", "Grizzly vs. Panda vs. Polar Bear! | Whoa Factor | Nat Geo Kids", "Nat Geo Kids", "animals", 310],
+  ["cXclqZG393E", "The Pyramid of Puzzles - Full Episode | Series 8 E20 | Numberblocks", "Numberblocks", "learning", 285],
+  ["vSYadh2xmcI", "Sesame Street: Elmo's Song", "Sesame Street", "music", 197],
+  ["rm0nnWjXv84", "Goldilocks and the Three Bears Yoga Adventure for Kids | Cosmic Kids", "Cosmic Kids Yoga", "movement", 1046],
+  ["3j44m2EqZrY", "Rad and Frisky's Wedding | 30 MINUTES The Sign Moment AND More Bluey Fun! | Bluey", "Bluey - Official Channel", "cartoons", 1133],
+  ["6wrg_mJldj8", "How To Draw Pumpkin Spice Hot Chocolate", "Art for Kids Hub", "drawing", 376],
+  ["hirR2vXWumw", "Why Does Spicy Food Taste Hot?", "SciShow Kids", "science", 203],
+  ["_gs4XfbYPKc", "All About Flamingos for Kids: Animal Videos for Children - FreeSchool", "Free School", "animals", 259],
+  ["5a5QLfcFTeA", "Time to Read! - Go All In | Alphablocks Phonics Song for Kids | Alphablocks", "Alphablocks", "learning", 192],
+  ["VX6BnTRq8Fs", "Why Do We Laugh? | The Dr. Binocs Show | Best Learning Videos For Kids | Peekaboo Kidz", "Peekaboo Kidz", "science", 333],
+  ["cJghbzC4dAA", "How Do Animals Talk Without Words? Animal Facts for Kids | Nat Geo Kids", "Nat Geo Kids", "animals", 171],
+  ["q16nsP6Joq4", "The Space Signal - Full Episode | Series 8 E30 | Numberblocks", "Numberblocks", "learning", 294],
+  ["QM8NjfCfOg0", "Sonic The Hedgehog | A Cosmic Kids Yoga Adventure! Sonic Videos for Kids", "Cosmic Kids Yoga", "movement", 964],
+  ["tnmfnRPOBx8", "How To Draw A Funny Hay Bale", "Art for Kids Hub", "drawing", 346],
+  ["LpzwxDqVDtc", "Elephants for Children: Learn All About Elephants - FreeSchool", "Free School", "animals", 269],
+];
 
 // ---------------------------------------------------------------------------
 // Type definitions
@@ -736,4 +794,72 @@ export function updateFeeConfig(
   return getDb()
     .prepare("UPDATE fee_config SET amount_cents = ?, is_active = ?, updated_at = datetime('now') WHERE fee_type = ?")
     .run(amountCents, isActive ? 1 : 0, feeType);
+}
+
+// ---------------------------------------------------------------------------
+// YTG Tube queries
+// ---------------------------------------------------------------------------
+
+export function getTubeVideos(includeHidden = false): TubeVideo[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM tube_videos ${includeHidden ? "" : "WHERE visible = 1"} ORDER BY id DESC`
+    )
+    .all() as TubeVideo[];
+}
+
+export function addTubeVideo(data: {
+  youtube_id: string;
+  title: string;
+  channel: string;
+  category: string;
+  duration_seconds: number | null;
+}): Database.RunResult {
+  return getDb()
+    .prepare(
+      `INSERT INTO tube_videos (youtube_id, title, channel, category, duration_seconds)
+       VALUES (?, ?, ?, ?, ?)`
+    )
+    .run(data.youtube_id, data.title, data.channel, data.category, data.duration_seconds);
+}
+
+export function updateTubeVideo(
+  id: number,
+  data: { visible?: boolean; category?: string; title?: string }
+): Database.RunResult {
+  const fields: string[] = [];
+  const values: (string | number)[] = [];
+  if (data.visible !== undefined) { fields.push("visible = ?"); values.push(data.visible ? 1 : 0); }
+  if (data.category !== undefined) { fields.push("category = ?"); values.push(data.category); }
+  if (data.title !== undefined) { fields.push("title = ?"); values.push(data.title); }
+  if (fields.length === 0) {
+    return { changes: 0, lastInsertRowid: 0 } as Database.RunResult;
+  }
+  values.push(id);
+  return getDb()
+    .prepare(`UPDATE tube_videos SET ${fields.join(", ")} WHERE id = ?`)
+    .run(...values);
+}
+
+export function deleteTubeVideo(id: number): Database.RunResult {
+  return getDb().prepare("DELETE FROM tube_videos WHERE id = ?").run(id);
+}
+
+/** Published, playable HTML games (excludes non-game entries like YTG Tube itself). */
+export function getTubeGames(): TubeGame[] {
+  const games = getDb()
+    .prepare(
+      `SELECT id, title, slug, description, thumbnail_emoji, game_path, category,
+              play_count, player_count, controls
+       FROM games
+       WHERE published = 1 AND game_path LIKE '/games/%'
+       ORDER BY play_count DESC, title`
+    )
+    .all() as Omit<TubeGame, "authors">[];
+  return games.map((g) => ({
+    ...g,
+    authors: getDevelopersForGame(g.id).map(({ developer_name, developer_emoji, role }) => ({
+      developer_name, developer_emoji, role,
+    })),
+  }));
 }

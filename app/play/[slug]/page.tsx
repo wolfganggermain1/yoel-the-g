@@ -1,4 +1,5 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
+import { TUBE_PATH } from '@/lib/tube';
 import { getGameBySlug, getDevelopersForGame } from '@/lib/db';
 import GamePlayer from '@/components/GamePlayer';
 import type { Metadata } from 'next';
@@ -47,6 +48,11 @@ export default async function PlayPage({ params }: PlayPageProps) {
 
   if (!game) {
     notFound();
+  }
+
+  // YTG Tube is a full page, not an HTML game file
+  if (game.game_path === TUBE_PATH) {
+    redirect(TUBE_PATH);
   }
 
   const authors = getDevelopersForGame(game.id);

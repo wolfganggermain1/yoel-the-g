@@ -1,6 +1,6 @@
-const CACHE_NAME = 'yoel-the-g-v3';
-const GAME_CACHE = 'yoel-games-v3';
-const STATIC_CACHE = 'yoel-static-v3';
+const CACHE_NAME = 'yoel-the-g-v4';
+const GAME_CACHE = 'yoel-games-v4';
+const STATIC_CACHE = 'yoel-static-v4';
 
 const APP_SHELL = [
   '/',
@@ -13,7 +13,11 @@ const APP_SHELL = [
 
 const GAME_FILES = [
   '/games/airplane-ocean/index.html',
+  '/games/birdie-waterfall/index.html',
   '/games/cute-rescue/index.html',
+  '/games/drawing-pad/index.html',
+  '/games/ispy/index.html',
+  '/games/ispy/three.min.js',
   '/games/johnny-trigger-sniper-3d/index.html',
   '/games/lilo-stitch-chess/index.html',
   '/games/loti-it0/index.html',
@@ -22,6 +26,7 @@ const GAME_FILES = [
   '/games/remember-family/index.html',
   '/games/robot-battle/index.html',
   '/games/simon-says/index.html',
+  '/games/skate-park/index.html',
   '/games/sky-battle/index.html',
   '/games/sparkle-shop/index.html',
 ];
@@ -29,7 +34,10 @@ const GAME_FILES = [
 // The Next.js play wrapper pages — must be cached for offline play
 const PLAY_PAGES = [
   '/play/airplane-ocean',
+  '/play/birdie-waterfall',
   '/play/cute-rescue',
+  '/play/drawing-pad',
+  '/play/ispy',
   '/play/johnny-trigger-sniper-3d',
   '/play/lilo-stitch-chess',
   '/play/loti-it0',
@@ -38,8 +46,19 @@ const PLAY_PAGES = [
   '/play/remember-family',
   '/play/robot-battle',
   '/play/simon-says',
+  '/play/skate-park',
   '/play/sky-battle',
   '/play/sparkle-shop',
+];
+
+// YTG Tube page + game thumbnails, so Tube opens offline in games-only mode
+const TUBE_FILES = [
+  '/tube',
+  ...[
+    'airplane-ocean', 'birdie-waterfall', 'johnny-trigger-sniper-3d', 'lilo-stitch-chess',
+    'loti-it0', 'loto', 'pilot-tollt', 'remember-family', 'robot-battle', 'simon-says',
+    'skate-park', 'sky-battle', 'sparkle-shop',
+  ].map((slug) => `/tube/thumbs/${slug}.jpg`),
 ];
 
 // Resilient caching — individual URL failures don't abort the SW install
@@ -64,6 +83,7 @@ self.addEventListener('install', (event) => {
       // Games + play pages — resilient (individual failures are ok)
       resilientCacheAll(GAME_CACHE, GAME_FILES),
       resilientCacheAll(CACHE_NAME, PLAY_PAGES),
+      resilientCacheAll(CACHE_NAME, TUBE_FILES),
     ])
   );
   self.skipWaiting();
@@ -86,6 +106,9 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
+
+  // Leave cross-origin requests (YouTube player, thumbnails) to the browser
+  if (url.origin !== self.location.origin) return;
 
   // API routes: network only (never cache — play counts, auth, etc.)
   if (url.pathname.startsWith('/api/')) {
@@ -144,6 +167,11 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       })
-      .catch(() => caches.match(event.request))
+      .catch(() =>
+        caches.match(event.request).then((cached) =>
+          // Deep links like /tube?v=... fall back to the cached /tube page
+          cached || (event.request.mode === 'navigate' ? caches.match(event.request, { ignoreSearch: true }) : undefined)
+        )
+      )
   );
 });
