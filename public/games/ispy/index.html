@@ -1,0 +1,2123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>iSPY - Fire &amp; Ice Robot Squad</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; overflow: hidden;
+    width: 100%; height: 100%;
+    background: #0b1026;
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  canvas { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; display: block; }
+  #world { z-index: 1; }
+  #hud { z-index: 2; }
+</style>
+</head>
+<body>
+<canvas id="world"></canvas>
+<canvas id="hud"></canvas>
+<script src="three.min.js"></script>
+<script>
+// ============================================================================
+// iSPY - Fire & Ice Robot Squad
+// Made by Yoel, Ezekiel, Areli & Dada for Yoel The G
+// 3D arena game: team up Fire (BLAZE) and Ice (FROST) with robot buddy i-SPY
+// to fix the Glitch Bots in Robot City.
+// ============================================================================
+
+// ---------------------------------------------------------------------------
+// PLATFORM THEME
+// ---------------------------------------------------------------------------
+let platformTheme = 'blue-light';
+try {
+  platformTheme = window.parent.document.documentElement.getAttribute('data-theme') || 'blue-light';
+} catch (e) {}
+
+const THEMES = {
+  'blue-light':  { primary: '#3b82f6', dark: '#1e40af', bg: '#f0f7ff', surface: '#ffffff', text: '#1e293b', accent: '#93c5fd', glow: 'rgba(59,130,246,0.4)' },
+  'blue-dark':   { primary: '#60a5fa', dark: '#2563eb', bg: '#0f172a', surface: '#1e293b', text: '#e2e8f0', accent: '#1e3a5f', glow: 'rgba(96,165,250,0.3)' },
+  'red-light':   { primary: '#ef4444', dark: '#991b1b', bg: '#fff5f5', surface: '#ffffff', text: '#1e293b', accent: '#fca5a5', glow: 'rgba(239,68,68,0.4)' },
+  'red-dark':    { primary: '#f87171', dark: '#dc2626', bg: '#1a0a0a', surface: '#2d1515', text: '#fecaca', accent: '#4a1515', glow: 'rgba(248,113,113,0.3)' },
+};
+const theme = THEMES[platformTheme] || THEMES['blue-light'];
+
+// ---------------------------------------------------------------------------
+// XP REPORTING
+// ---------------------------------------------------------------------------
+let xpTimer = 0;
+function reportXP() {
+  try { window.parent.postMessage({ type: 'xp', amount: 10 }, '*'); } catch (e) {}
+}
+function onGameOver(finalScore) {
+  try { window.parent.postMessage({ type: 'gameOver', score: finalScore }, '*'); } catch (e) {}
+}
+
+// ---------------------------------------------------------------------------
+// CONSTANTS
+// ---------------------------------------------------------------------------
+const ARENA_R = 16;          // arena radius (world units)
+const PLAYER_SPEED = 8.5;
+const MAX_LIVES = 2;
+const MAX_ENERGY = 100;
+const FONT = '"Arial Rounded MT Bold", "Trebuchet MS", "Segoe UI", Arial, sans-serif';
+const FIRE = 'fire', ICE = 'ice';
+
+const HERO_INFO = {
+  fire: { name: 'BLAZE', color: '#ff7a1a', light: '#ffd23f', glow: 0xff5a00 },
+  ice:  { name: 'FROST', color: '#38c8ff', light: '#c9f4ff', glow: 0x2fb8ff },
+};
+
+// Each level: look + enemy mix. Enemy speeds scale up so later levels feel fast.
+const LEVELS = [
+  { name: 'Robot Factory', goal: 14, maxAlive: 5, speed: 3.6, spawnGap: 1.5,
+    types: ['basic', 'basic', 'basic', 'hot', 'cold'],
+    sky: ['#7fd3ff', '#bfe9ff', '#ffe6b0'], fog: 0xbfe3ff, floor: '#56627e', trim: '#ffb400', sun: 0xfff2d6, hemi: [0xcfeeff, 0x6a5a4a], spyRate: 2.6 },
+  { name: 'Neon City', goal: 20, maxAlive: 6, speed: 4.2, spawnGap: 1.2,
+    types: ['basic', 'hot', 'cold', 'hot', 'cold', 'drone', 'drone'],
+    sky: ['#3a1c71', '#b44bd6', '#ff8fb1'], fog: 0x6a3a9a, floor: '#3f4468', trim: '#ff3df0', sun: 0xffd0f0, hemi: [0xd8b8ff, 0x3a2a5a], spyRate: 2.3 },
+  { name: 'Sky Tower', goal: 16, maxAlive: 7, speed: 4.8, spawnGap: 1.0,
+    types: ['hot', 'cold', 'drone', 'bouncer', 'hot', 'cold', 'bouncer'],
+    sky: ['#ff7e5f', '#feb47b', '#ffe8c2'], fog: 0xffc9a0, floor: '#5f6a86', trim: '#39ffb0', sun: 0xffe0b8, hemi: [0xffe3cc, 0x6a4a3a], spyRate: 2.0, boss: true },
+];
+
+// ---------------------------------------------------------------------------
+// SETUP: renderer, HUD canvas, scene, camera
+// ---------------------------------------------------------------------------
+const worldCanvas = document.getElementById('world');
+const hudCanvas = document.getElementById('hud');
+const hud = hudCanvas.getContext('2d');
+const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+
+const renderer = new THREE.WebGLRenderer({ canvas: worldCanvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isTouch ? 1.75 : 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.95;
+
+const scene = new THREE.Scene();
+// Studio-style environment map gives the metal robots realistic reflections
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new THREE.RoomEnvironment(), 0.04).texture;
+
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 400);
+let W = 0, H = 0, DPR = 1;
+
+function resize() {
+  W = window.innerWidth; H = window.innerHeight;
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  renderer.setSize(W, H, false);
+  hudCanvas.width = Math.round(W * DPR); hudCanvas.height = Math.round(H * DPR);
+  camera.aspect = W / H;
+  // Portrait screens need a taller field of view so the arena still fits
+  camera.fov = W < H ? 62 : 50;
+  camera.updateProjectionMatrix();
+  layoutButtons();
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 120));
+
+// ---------------------------------------------------------------------------
+// LIGHTING
+// ---------------------------------------------------------------------------
+const hemi = new THREE.HemisphereLight(0xcfeeff, 0x6a5a4a, 0.9);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff2d6, 2.2);
+sun.position.set(12, 24, 10);
+sun.castShadow = true;
+sun.shadow.mapSize.set(isTouch ? 1024 : 2048, isTouch ? 1024 : 2048);
+sun.shadow.camera.left = -22; sun.shadow.camera.right = 22;
+sun.shadow.camera.top = 22; sun.shadow.camera.bottom = -22;
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 70;
+sun.shadow.bias = -0.0008;
+sun.shadow.normalBias = 0.03;
+scene.add(sun);
+scene.add(sun.target);
+// Hero glow light (changes color with element)
+const heroLight = new THREE.PointLight(0xff5a00, 6, 9, 2);
+scene.add(heroLight);
+
+// ---------------------------------------------------------------------------
+// PROCEDURAL TEXTURES (drawn with code, no image files)
+// ---------------------------------------------------------------------------
+function makeCanvasTex(w, h, draw) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+function skyTexture(cols) {
+  return makeCanvasTex(16, 256, (g, w, h) => {
+    const gr = g.createLinearGradient(0, 0, 0, h);
+    gr.addColorStop(0, cols[0]); gr.addColorStop(0.55, cols[1]); gr.addColorStop(1, cols[2]);
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  });
+}
+function floorTexture(base, trim) {
+  const t = makeCanvasTex(512, 512, (g, w, h) => {
+    g.fillStyle = base; g.fillRect(0, 0, w, h);
+    const n = 4, s = w / n;
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+      const shade = ((i + j) % 2) ? 0.06 : -0.04;
+      g.fillStyle = shade > 0 ? 'rgba(255,255,255,' + shade + ')' : 'rgba(0,0,0,' + (-shade) + ')';
+      g.fillRect(i * s + 3, j * s + 3, s - 6, s - 6);
+      // rivets
+      g.fillStyle = 'rgba(255,255,255,0.35)';
+      [[10, 10], [s - 10, 10], [10, s - 10], [s - 10, s - 10]].forEach(p => {
+        g.beginPath(); g.arc(i * s + p[0], j * s + p[1], 3.5, 0, Math.PI * 2); g.fill();
+      });
+      // tread lines
+      g.strokeStyle = 'rgba(0,0,0,0.12)'; g.lineWidth = 3;
+      for (let k = 1; k < 4; k++) {
+        g.beginPath(); g.moveTo(i * s + 20, j * s + k * s / 4); g.lineTo(i * s + s - 20, j * s + k * s / 4); g.stroke();
+      }
+    }
+    g.strokeStyle = trim; g.globalAlpha = 0.5; g.lineWidth = 4;
+    g.strokeRect(2, 2, w - 4, h - 4);
+    g.globalAlpha = 1;
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(5, 5);
+  t.anisotropy = 4;
+  return t;
+}
+function glowTexture() {
+  return makeCanvasTex(64, 64, (g, w, h) => {
+    const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+    gr.addColorStop(0, 'rgba(255,255,255,1)');
+    gr.addColorStop(0.35, 'rgba(255,255,255,0.55)');
+    gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  });
+}
+function windowTexture() {
+  const t = makeCanvasTex(64, 128, (g, w, h) => {
+    g.fillStyle = '#1b2240'; g.fillRect(0, 0, w, h);
+    for (let y = 6; y < h - 6; y += 12) for (let x = 6; x < w - 6; x += 14) {
+      const lit = Math.random() < 0.55;
+      g.fillStyle = lit ? (Math.random() < 0.5 ? '#ffe9a8' : '#9fe8ff') : '#2a3358';
+      g.fillRect(x, y, 8, 7);
+    }
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+const GLOW_TEX = glowTexture();
+
+// ---------------------------------------------------------------------------
+// SHARED MATERIALS & GEOMETRY
+// ---------------------------------------------------------------------------
+function metal(color, rough = 0.35, metalness = 0.75, emissive = 0x000000, ei = 0) {
+  return new THREE.MeshStandardMaterial({ color, roughness: rough, metalness, emissive, emissiveIntensity: ei });
+}
+function glowMat(color, intensity = 2) {
+  return new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: intensity, roughness: 0.3, metalness: 0.1 });
+}
+const GEO = {
+  sphere: new THREE.SphereGeometry(1, 24, 16),
+  sphereLo: new THREE.SphereGeometry(1, 12, 8),
+  capsule: new THREE.CapsuleGeometry(0.5, 0.6, 6, 16),
+  box: new THREE.BoxGeometry(1, 1, 1),
+  cone: new THREE.ConeGeometry(0.5, 1, 12),
+  cyl: new THREE.CylinderGeometry(0.5, 0.5, 1, 20),
+  torus: new THREE.TorusGeometry(1, 0.08, 8, 48),
+  octa: new THREE.OctahedronGeometry(0.5, 0),
+  gear: new THREE.TorusGeometry(0.28, 0.1, 6, 10),
+  ring: new THREE.RingGeometry(0.9, 1, 48),
+};
+const WHITE = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2, metalness: 0.0 });
+const BLACK = new THREE.MeshStandardMaterial({ color: 0x111522, roughness: 0.2, metalness: 0.3 });
+
+function mesh(geo, mat, sx = 1, sy = sx, sz = sx) {
+  const m = new THREE.Mesh(geo, mat);
+  m.scale.set(sx, sy, sz);
+  m.castShadow = true;
+  return m;
+}
+function glowSprite(color, size, opacity = 0.9) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW_TEX, color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false }));
+  s.scale.set(size, size, 1);
+  return s;
+}
+
+// ---------------------------------------------------------------------------
+// WORLD: sky, arena, city layers (3 depth layers for parallax)
+// ---------------------------------------------------------------------------
+const world = { levelIdx: 0 };
+const skyMat = new THREE.MeshBasicMaterial({ side: THREE.BackSide, fog: false, depthWrite: false });
+const skyDome = new THREE.Mesh(new THREE.SphereGeometry(200, 32, 16), skyMat);
+scene.add(skyDome);
+scene.fog = new THREE.Fog(0xbfe3ff, 45, 150);
+
+// Arena floor
+const floorMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55, metalness: 0.55 });
+const floor = new THREE.Mesh(new THREE.CylinderGeometry(ARENA_R + 1.2, ARENA_R + 2.2, 1.2, 64), floorMat);
+floor.position.y = -0.6;
+floor.receiveShadow = true;
+scene.add(floor);
+// Glowing arena edge ring
+const edgeMat = glowMat(0xffb400, 1.6);
+const edgeRing = new THREE.Mesh(new THREE.TorusGeometry(ARENA_R + 1.2, 0.18, 10, 96), edgeMat);
+edgeRing.rotation.x = Math.PI / 2;
+edgeRing.position.y = 0.02;
+scene.add(edgeRing);
+// Center emblem ring
+const emblem = new THREE.Mesh(new THREE.RingGeometry(3.2, 3.6, 64), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 }));
+emblem.rotation.x = -Math.PI / 2; emblem.position.y = 0.01;
+scene.add(emblem);
+
+// Arena pylons around the rim (near layer)
+const pylons = [];
+for (let i = 0; i < 8; i++) {
+  const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+  const g = new THREE.Group();
+  const post = mesh(GEO.cyl, metal(0x9aa6c0, 0.3, 0.9), 0.7, 3.2, 0.7);
+  post.position.y = 1.6;
+  const cap = mesh(GEO.sphere, glowMat(0xffb400, 2.2), 0.45);
+  cap.position.y = 3.4;
+  g.add(post, cap);
+  g.position.set(Math.cos(a) * (ARENA_R + 2.6), 0, Math.sin(a) * (ARENA_R + 2.6));
+  g.userData.cap = cap;
+  scene.add(g);
+  pylons.push(g);
+}
+
+// Mid layer: giant spinning factory gears
+const bigGears = [];
+const gearMat = metal(0x7d8aa6, 0.4, 0.85);
+for (let i = 0; i < 5; i++) {
+  const gear = new THREE.Group();
+  const r = 4 + Math.random() * 3;
+  const wheel = new THREE.Mesh(new THREE.TorusGeometry(r, r * 0.16, 8, 40), gearMat);
+  gear.add(wheel);
+  const teeth = 14;
+  for (let t = 0; t < teeth; t++) {
+    const tooth = new THREE.Mesh(GEO.box, gearMat);
+    const ta = (t / teeth) * Math.PI * 2;
+    tooth.scale.set(r * 0.28, r * 0.28, r * 0.25);
+    tooth.position.set(Math.cos(ta) * r * 1.15, Math.sin(ta) * r * 1.15, 0);
+    tooth.rotation.z = ta;
+    gear.add(tooth);
+  }
+  const hub = new THREE.Mesh(GEO.cyl, metal(0xffb400, 0.3, 0.8));
+  hub.scale.set(r * 0.35, r * 0.3, r * 0.35); hub.rotation.x = Math.PI / 2;
+  gear.add(hub);
+  const a = -Math.PI * 0.15 - (i / 4) * Math.PI * 0.7;
+  const dist = 52 + Math.random() * 12;
+  gear.position.set(Math.cos(a) * dist, 4 + Math.random() * 9, Math.sin(a) * dist);
+  gear.lookAt(0, gear.position.y, 0);
+  gear.userData.spin = (Math.random() < 0.5 ? -1 : 1) * (0.15 + Math.random() * 0.25);
+  scene.add(gear);
+  bigGears.push(gear);
+}
+
+// Far layer: robot city skyline with glowing windows
+const skyline = new THREE.Group();
+const winTex = windowTexture();
+for (let i = 0; i < 46; i++) {
+  const a = (i / 46) * Math.PI * 2;
+  const dist = 75 + Math.random() * 35;
+  const h = 12 + Math.random() * 38;
+  const wdt = 5 + Math.random() * 7;
+  const tex = winTex.clone(); tex.needsUpdate = true;
+  tex.repeat.set(wdt / 8, h / 10);
+  const mat = new THREE.MeshStandardMaterial({ color: 0x8090b8, map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.6, roughness: 0.6, metalness: 0.4 });
+  const b = new THREE.Mesh(GEO.box, mat);
+  b.scale.set(wdt, h, wdt);
+  b.position.set(Math.cos(a) * dist, h / 2 - 8, Math.sin(a) * dist);
+  b.lookAt(0, b.position.y, 0);
+  skyline.add(b);
+  if (Math.random() < 0.45) {
+    const ant = new THREE.Mesh(GEO.cyl, metal(0xcccccc));
+    ant.scale.set(0.3, 6, 0.3);
+    ant.position.set(b.position.x, h - 8 + 3, b.position.z);
+    skyline.add(ant);
+    const blink = glowSprite(0xff4466, 3.5);
+    blink.position.set(b.position.x, h - 8 + 6.3, b.position.z);
+    skyline.add(blink);
+  }
+}
+scene.add(skyline);
+
+// Ambient floating sparkles: fire embers + snowflakes (Fire & Ice!)
+const AMBIENT_N = 60;
+const ambientGeo = new THREE.BufferGeometry();
+const ambPos = new Float32Array(AMBIENT_N * 3);
+const ambCol = new Float32Array(AMBIENT_N * 3);
+const ambVel = [];
+for (let i = 0; i < AMBIENT_N; i++) {
+  ambPos[i * 3] = (Math.random() - 0.5) * 50;
+  ambPos[i * 3 + 1] = Math.random() * 16;
+  ambPos[i * 3 + 2] = (Math.random() - 0.5) * 50;
+  const fire = i % 2 === 0;
+  const c = new THREE.Color(fire ? 0xffa040 : 0x9fe8ff);
+  ambCol[i * 3] = c.r; ambCol[i * 3 + 1] = c.g; ambCol[i * 3 + 2] = c.b;
+  ambVel.push(fire ? 0.8 + Math.random() : -0.6 - Math.random() * 0.6);
+}
+ambientGeo.setAttribute('position', new THREE.BufferAttribute(ambPos, 3));
+ambientGeo.setAttribute('color', new THREE.BufferAttribute(ambCol, 3));
+const ambient = new THREE.Points(ambientGeo, new THREE.PointsMaterial({ size: 0.35, map: GLOW_TEX, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+scene.add(ambient);
+
+function applyLevelLook(idx) {
+  const L = LEVELS[idx];
+  if (skyMat.map) skyMat.map.dispose();
+  skyMat.map = skyTexture(L.sky); skyMat.needsUpdate = true;
+  scene.fog.color.setHex(L.fog);
+  if (floorMat.map) floorMat.map.dispose();
+  floorMat.map = floorTexture(L.floor, L.trim); floorMat.needsUpdate = true;
+  const trim = new THREE.Color(L.trim);
+  edgeMat.color.copy(trim); edgeMat.emissive.copy(trim);
+  pylons.forEach(p => { p.userData.cap.material.color.copy(trim); p.userData.cap.material.emissive.copy(trim); });
+  sun.color.setHex(L.sun);
+  hemi.color.setHex(L.hemi[0]); hemi.groundColor.setHex(L.hemi[1]);
+  // Neon City is at night: brighter windows, gears hidden; Sky Tower shows gears lower
+  skyline.children.forEach(o => { if (o.material && o.material.emissiveMap) o.material.emissiveIntensity = idx === 1 ? 1.3 : 0.6; });
+  bigGears.forEach(g => { g.visible = idx !== 1; });
+  skyline.position.y = idx === 2 ? -22 : 0; // up high on the tower: city is below us
+}
+
+// ---------------------------------------------------------------------------
+// CHARACTER BUILDERS (all shapes built from 3D primitives)
+// ---------------------------------------------------------------------------
+function buildHero(kind) {
+  const isFire = kind === FIRE;
+  const bodyCol = isFire ? 0xe8531f : 0x2aa8e0;
+  const trimCol = isFire ? 0xffc24a : 0xe8fbff;
+  const glowCol = isFire ? 0xff7a1a : 0x6fe0ff;
+  const g = new THREE.Group();
+  const rig = new THREE.Group(); g.add(rig);
+
+  const body = mesh(GEO.capsule, metal(bodyCol, 0.28, 0.7), 1.05, 0.95, 0.9);
+  body.position.y = 1.15; rig.add(body);
+  const belly = mesh(GEO.sphere, metal(trimCol, 0.25, 0.6), 0.36, 0.42, 0.2);
+  belly.position.set(0, 1.05, 0.42); rig.add(belly);
+  const core = mesh(GEO.sphere, glowMat(glowCol, 3), 0.14);
+  core.position.set(0, 1.1, 0.55); rig.add(core);
+
+  const head = new THREE.Group(); head.position.y = 2.2; rig.add(head);
+  const skull = mesh(GEO.sphere, metal(bodyCol, 0.25, 0.7), 0.62, 0.56, 0.58);
+  head.add(skull);
+  const visor = mesh(GEO.sphere, new THREE.MeshStandardMaterial({ color: 0x0c1330, roughness: 0.05, metalness: 0.6 }), 0.5, 0.3, 0.3);
+  visor.position.set(0, 0.02, 0.36); head.add(visor);
+  const eyeMat = glowMat(isFire ? 0xfff27a : 0xc9f4ff, 3);
+  const eyeL = mesh(GEO.sphere, eyeMat, 0.09, 0.12, 0.05); eyeL.position.set(-0.17, 0.04, 0.63); head.add(eyeL);
+  const eyeR = eyeL.clone(); eyeR.position.x = 0.17; head.add(eyeR);
+  const smile = mesh(GEO.torus, eyeMat, 0.1, 0.1, 0.1); smile.rotation.z = Math.PI; smile.position.set(0, -0.12, 0.62);
+  smile.geometry = new THREE.TorusGeometry(1, 0.18, 6, 16, Math.PI); head.add(smile);
+
+  // Crown: flames for BLAZE, ice crystals for FROST
+  const crown = [];
+  for (let i = 0; i < 5; i++) {
+    const a = (i - 2) * 0.38;
+    let c;
+    if (isFire) {
+      c = mesh(GEO.cone, glowMat(i % 2 ? 0xffb020 : 0xff5a10, 2.2), 0.28, 0.75, 0.28);
+    } else {
+      c = mesh(GEO.octa, new THREE.MeshStandardMaterial({ color: 0xbff0ff, emissive: 0x4fcfff, emissiveIntensity: 1.2, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.9 }), 0.42, 1.1, 0.42);
+    }
+    c.position.set(Math.sin(a) * 0.45, 0.5 + Math.cos(a) * 0.12 - Math.abs(i - 2) * 0.06, -0.05 - Math.abs(a) * 0.2);
+    c.rotation.z = -a * 0.8;
+    c.userData.baseY = c.position.y;
+    head.add(c); crown.push(c);
+  }
+
+  // Arms & legs
+  const limbMat = metal(0x3b4258, 0.35, 0.8);
+  const handMat = metal(trimCol, 0.3, 0.6);
+  function arm(side) {
+    const a = new THREE.Group(); a.position.set(side * 0.62, 1.55, 0);
+    const up = mesh(GEO.capsule, limbMat, 0.32, 0.55, 0.32); up.position.y = -0.3; a.add(up);
+    const hand = mesh(GEO.sphere, handMat, 0.26); hand.position.y = -0.72; a.add(hand);
+    rig.add(a); return a;
+  }
+  function leg(side) {
+    const l = new THREE.Group(); l.position.set(side * 0.3, 0.55, 0);
+    const up = mesh(GEO.capsule, limbMat, 0.34, 0.4, 0.34); up.position.y = -0.2; l.add(up);
+    const foot = mesh(GEO.sphere, metal(bodyCol, 0.3, 0.7), 0.3, 0.2, 0.42); foot.position.set(0, -0.48, 0.1); l.add(foot);
+    rig.add(l); return l;
+  }
+  const armL = arm(-1), armR = arm(1), legL = leg(-1), legR = leg(1);
+  // Back jet pack
+  const pack = mesh(GEO.box, metal(0x596380, 0.3, 0.85), 0.7, 0.8, 0.35); pack.position.set(0, 1.35, -0.5); rig.add(pack);
+  const jetGlow = glowSprite(glowCol, 1.1, 0.8); jetGlow.position.set(0, 0.85, -0.55); rig.add(jetGlow);
+
+  // Soft glow aura under the feet
+  const aura = new THREE.Mesh(new THREE.CircleGeometry(1.1, 32), new THREE.MeshBasicMaterial({ map: GLOW_TEX, color: glowCol, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }));
+  aura.rotation.x = -Math.PI / 2; aura.position.y = 0.03; g.add(aura);
+
+  g.userData = { rig, head, armL, armR, legL, legR, crown, jetGlow, core, kind };
+  return g;
+}
+
+function buildSpy() {
+  // i-SPY: floating round robot buddy with one big eye
+  const g = new THREE.Group();
+  const shell = mesh(GEO.sphere, metal(0xf2f5fb, 0.18, 0.55), 0.62); g.add(shell);
+  const band = mesh(GEO.torus, metal(0x7d4dff, 0.25, 0.7), 0.64, 0.64, 0.9); band.rotation.x = Math.PI / 2; g.add(band);
+  const eyeWhite = mesh(GEO.sphere, WHITE, 0.36, 0.36, 0.2); eyeWhite.position.z = 0.5; g.add(eyeWhite);
+  const iris = mesh(GEO.sphere, glowMat(0x21d4ff, 2.5), 0.2, 0.2, 0.1); iris.position.z = 0.64; g.add(iris);
+  const pupil = mesh(GEO.sphere, BLACK, 0.09, 0.09, 0.06); pupil.position.z = 0.71; g.add(pupil);
+  const antenna = mesh(GEO.cyl, metal(0xcccccc), 0.05, 0.5, 0.05); antenna.position.y = 0.8; g.add(antenna);
+  const bulb = mesh(GEO.sphere, glowMat(0xff3df0, 3), 0.12); bulb.position.y = 1.08; g.add(bulb);
+  const prop = new THREE.Group(); prop.position.y = -0.62; g.add(prop);
+  for (let i = 0; i < 3; i++) {
+    const blade = mesh(GEO.box, metal(0x7d4dff), 0.8, 0.04, 0.14);
+    blade.rotation.y = (i / 3) * Math.PI * 2; prop.add(blade);
+  }
+  const halo = glowSprite(0x21d4ff, 2.2, 0.35); g.add(halo);
+  g.userData = { iris, pupil, bulb, prop };
+  return g;
+}
+
+// Glitch Bots: cute mischievous robots. Types: basic, hot, cold, drone, bouncer, boss
+const BOT_STYLE = {
+  basic:   { body: 0x8b5cf6, trim: 0xc4b5fd, eye: 0xb6ff3b, hp: 3, size: 1.0, score: 100 },
+  hot:     { body: 0xff6a3d, trim: 0xffd166, eye: 0xfff27a, hp: 3, size: 1.0, score: 150 },
+  cold:    { body: 0x3dc2ff, trim: 0xd6f6ff, eye: 0xffffff, hp: 3, size: 1.0, score: 150 },
+  drone:   { body: 0xff4fa3, trim: 0xffd1e8, eye: 0xb6ff3b, hp: 2, size: 0.8, score: 200 },
+  bouncer: { body: 0x22c55e, trim: 0xbbf7d0, eye: 0xfff27a, hp: 8, size: 1.5, score: 400 },
+  boss:    { body: 0x6d28d9, trim: 0xf0abfc, eye: 0xff3df0, hp: 150, size: 3.2, score: 3000 },
+};
+
+function buildBot(type) {
+  const st = BOT_STYLE[type];
+  const g = new THREE.Group();
+  const rig = new THREE.Group(); g.add(rig);
+  const bodyMat = metal(st.body, 0.3, 0.65, type === 'hot' ? 0xff3300 : type === 'cold' ? 0x0088ff : 0x000000, type === 'hot' || type === 'cold' ? 0.35 : 0);
+  const trimMat = metal(st.trim, 0.3, 0.6);
+  let body;
+  if (type === 'drone') {
+    body = mesh(GEO.sphere, bodyMat, 0.7, 0.5, 0.7); body.position.y = 0; rig.add(body);
+    const disk = mesh(GEO.cyl, trimMat, 1.8, 0.12, 1.8); rig.add(disk);
+    const glow = glowSprite(st.body, 2.2, 0.5); glow.position.y = -0.5; rig.add(glow);
+  } else {
+    body = mesh(GEO.box, bodyMat, 1.2, 1.1, 1.0); body.position.y = 0.95; rig.add(body);
+    const belly = mesh(GEO.box, trimMat, 0.8, 0.5, 0.1); belly.position.set(0, 0.85, 0.52); rig.add(belly);
+    const legL = mesh(GEO.cyl, metal(0x3b4258), 0.25, 0.5, 0.25); legL.position.set(-0.32, 0.25, 0); rig.add(legL);
+    const legR = legL.clone(); legR.position.x = 0.32; rig.add(legR);
+    const footL = mesh(GEO.sphere, trimMat, 0.28, 0.14, 0.34); footL.position.set(-0.32, 0.05, 0.08); rig.add(footL);
+    const footR = footL.clone(); footR.position.x = 0.32; rig.add(footR);
+    const armL = mesh(GEO.capsule, trimMat, 0.25, 0.5, 0.25); armL.position.set(-0.78, 0.95, 0); armL.rotation.z = 0.4; rig.add(armL);
+    const armR = armL.clone(); armR.position.x = 0.78; armR.rotation.z = -0.4; rig.add(armR);
+    g.userData.feet = [legL, legR, footL, footR];
+    g.userData.arms = [armL, armR];
+    if (type === 'bouncer') {
+      const spring = mesh(GEO.torus, metal(0xcccccc), 0.45, 0.45, 1.2); spring.rotation.x = Math.PI / 2; spring.position.y = 0.1; rig.add(spring);
+    }
+  }
+  // Googly eyes
+  const eyeY = type === 'drone' ? 0.05 : 1.15;
+  const eyeZ = type === 'drone' ? 0.6 : 0.52;
+  const eyes = [];
+  for (const sx of [-0.26, 0.26]) {
+    const w = mesh(GEO.sphere, WHITE, 0.22, 0.22, 0.12); w.position.set(sx, eyeY, eyeZ); rig.add(w);
+    const p = mesh(GEO.sphere, BLACK, 0.1, 0.1, 0.06); p.position.set(sx, eyeY, eyeZ + 0.1); rig.add(p);
+    eyes.push(p);
+  }
+  // Antenna with blinking bulb
+  const ant = mesh(GEO.cyl, metal(0xcccccc), 0.05, 0.45, 0.05); ant.position.y = type === 'drone' ? 0.6 : 1.7; rig.add(ant);
+  const bulb = mesh(GEO.sphere, glowMat(st.eye, 3), 0.14); bulb.position.y = ant.position.y + 0.28; rig.add(bulb);
+  // Element marker floating above hot/cold bots, so kids can spot which hero to use
+  let marker = null;
+  if (type === 'hot' || type === 'cold') {
+    marker = glowSprite(type === 'hot' ? 0xff5a00 : 0x3dc2ff, 1.3, 0.9);
+    marker.position.y = 2.6; rig.add(marker);
+  }
+  if (type === 'boss') {
+    const crown = mesh(GEO.cone, glowMat(0xff3df0, 2), 0.5, 0.7, 0.5); crown.position.y = 1.7; rig.add(crown);
+    const coreM = mesh(GEO.sphere, glowMat(0xff5a00, 3), 0.28); coreM.position.set(0, 0.9, 0.55); rig.add(coreM);
+    g.userData.core = coreM;
+  }
+  g.scale.setScalar(st.size);
+  g.userData.rig = rig; g.userData.eyes = eyes; g.userData.bulb = bulb; g.userData.bodyMat = bodyMat;
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
+
+// ---------------------------------------------------------------------------
+// AUDIO (Web Audio API, all sounds generated)
+// ---------------------------------------------------------------------------
+let audioCtx = null;
+let muted = false;
+function ensureAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audioCtx = null; }
+  }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}
+function tone(freq, dur, type = 'sine', vol = 0.15, slideTo = null, delay = 0) {
+  if (muted || !audioCtx) return;
+  const t0 = audioCtx.currentTime + delay;
+  const o = audioCtx.createOscillator();
+  const gn = audioCtx.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, t0);
+  if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+  gn.gain.setValueAtTime(0.0001, t0);
+  gn.gain.exponentialRampToValueAtTime(vol, t0 + 0.012);
+  gn.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(gn); gn.connect(audioCtx.destination);
+  o.start(t0); o.stop(t0 + dur + 0.02);
+}
+const SFX = {
+  collect: () => { tone(660, 0.1, 'sine', 0.14, 1320); tone(990, 0.12, 'triangle', 0.08, 1760, 0.05); },
+  jump:    () => tone(320, 0.12, 'square', 0.07, 640),
+  hit:     () => tone(110, 0.22, 'sawtooth', 0.12, 60),
+  fire:    () => tone(220, 0.14, 'sawtooth', 0.06, 520),
+  ice:     () => tone(1400, 0.12, 'triangle', 0.07, 900),
+  pop:     () => { tone(520, 0.08, 'square', 0.07, 900); tone(900, 0.12, 'sine', 0.08, 1500, 0.04); },
+  steam:   () => { tone(300, 0.25, 'sawtooth', 0.07, 1200); tone(1200, 0.2, 'sine', 0.06, 400, 0.05); },
+  special: () => { [262, 392, 523, 784].forEach((f, i) => tone(f, 0.2, 'triangle', 0.1, f * 1.5, i * 0.05)); },
+  swap:    () => { tone(500, 0.08, 'sine', 0.1, 800); tone(800, 0.1, 'sine', 0.08, 500, 0.06); },
+  spy:     () => tone(1800, 0.06, 'square', 0.035, 2400),
+  over:    () => { [523, 392, 330, 196].forEach((f, i) => tone(f, 0.28, 'triangle', 0.12, f * 0.9, i * 0.22)); },
+  level:   () => { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.2, 'triangle', 0.12, null, i * 0.1)); },
+  boss:    () => { tone(90, 0.3, 'sawtooth', 0.12, 70); tone(140, 0.3, 'square', 0.06, 90, 0.1); },
+};
+
+// ---------------------------------------------------------------------------
+// GAME STATE
+// ---------------------------------------------------------------------------
+const state = {
+  mode: 'start',          // start | card | playing | gameover | win
+  score: 0, shownScore: 0, scorePop: 0,
+  lives: MAX_LIVES, energy: MAX_ENERGY,
+  level: 0, fixed: 0, spawned: 0,
+  spawnTimer: 0, cardTimer: 0, modeTime: 0,
+  special: 0, shake: 0, flash: 0, hurtFlash: 0,
+  bossSpawned: false, boss: null,
+  combo: 0, comboTimer: 0,
+  tip: '', tipTimer: 0,
+};
+
+const player = {
+  pos: new THREE.Vector3(0, 0, 4), vel: new THREE.Vector3(), vy: 0, y: 0,
+  facing: 0, element: FIRE, swapCd: 0, attackCd: 0, invuln: 0,
+  charge: 0, charging: false, walkT: 0, attackAnim: 0, onGround: true, specialAnim: 0,
+};
+const heroes = { fire: buildHero(FIRE), ice: buildHero(ICE) };
+scene.add(heroes.fire, heroes.ice);
+heroes.ice.visible = false;
+
+const spy = { obj: buildSpy(), pos: new THREE.Vector3(2, 3, 4), cd: 2, target: null, beam: 0, healCd: 12, bubble: '', bubbleT: 0 };
+scene.add(spy.obj);
+// Zap beam line from i-SPY to target
+const beamGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+const beam = new THREE.Line(beamGeo, new THREE.LineBasicMaterial({ color: 0x21d4ff, transparent: true, opacity: 0.9 }));
+beam.visible = false; scene.add(beam);
+// Scan reticle ring on the spied bot
+const reticle = new THREE.Mesh(GEO.ring, new THREE.MeshBasicMaterial({ color: 0x21d4ff, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }));
+reticle.rotation.x = -Math.PI / 2; reticle.visible = false; scene.add(reticle);
+
+// ---------------------------------------------------------------------------
+// OBJECT POOLS: projectiles, particles, gears, enemy orbs, shockwaves
+// ---------------------------------------------------------------------------
+function makePool(n, factory) {
+  const arr = [];
+  for (let i = 0; i < n; i++) { const o = factory(i); o.active = false; if (o.obj) { o.obj.visible = false; scene.add(o.obj); } arr.push(o); }
+  arr.get = function () { for (const o of this) if (!o.active) { o.active = true; if (o.obj) o.obj.visible = true; return o; } return null; };
+  arr.free = function (o) { o.active = false; if (o.obj) o.obj.visible = false; };
+  arr.clear = function () { for (const o of this) this.free(o); };
+  return arr;
+}
+
+const fireMat = glowMat(0xff7a1a, 3);
+const iceMat = new THREE.MeshStandardMaterial({ color: 0xc9f4ff, emissive: 0x3dc2ff, emissiveIntensity: 1.8, roughness: 0.05, metalness: 0.1 });
+const shots = makePool(24, () => {
+  const g = new THREE.Group();
+  const fireBall = mesh(GEO.sphere, fireMat, 0.35); g.add(fireBall);
+  const iceShard = mesh(GEO.octa, iceMat, 0.5, 1.1, 0.5); iceShard.rotation.x = Math.PI / 2; g.add(iceShard);
+  const glow = glowSprite(0xff7a1a, 1.8, 0.85); g.add(glow);
+  return { obj: g, fireBall, iceShard, glow, vel: new THREE.Vector3(), life: 0, dmg: 1, el: FIRE, big: false, hit: new Set() };
+});
+
+const PARTICLE_MAX = 50;
+const particles = makePool(PARTICLE_MAX, () => {
+  const s = glowSprite(0xffffff, 0.5, 1);
+  return { obj: s, vel: new THREE.Vector3(), life: 0, max: 1, size: 0.5, grav: 0 };
+});
+
+const gearMatGold = new THREE.MeshStandardMaterial({ color: 0xffd23f, emissive: 0xffa000, emissiveIntensity: 0.9, metalness: 0.9, roughness: 0.25 });
+const gears = makePool(16, () => {
+  const g = new THREE.Group();
+  const ring = mesh(GEO.gear, gearMatGold, 1.3); g.add(ring);
+  for (let i = 0; i < 6; i++) {
+    const t = mesh(GEO.box, gearMatGold, 0.14, 0.14, 0.14);
+    const a = i / 6 * Math.PI * 2;
+    t.position.set(Math.cos(a) * 0.5, Math.sin(a) * 0.5, 0); ring.add(t);
+  }
+  const glow = glowSprite(0xffd23f, 1.6, 0.7); g.add(glow);
+  return { obj: g, life: 0, pos: new THREE.Vector3(), glow, heal: false };
+});
+// Repair battery dropped by i-SPY (heals energy)
+const battery = (() => {
+  const g = new THREE.Group();
+  const b = mesh(GEO.cyl, glowMat(0x39ff88, 1.4), 0.5, 0.8, 0.5); g.add(b);
+  const cap = mesh(GEO.cyl, metal(0xdddddd), 0.25, 0.15, 0.25); cap.position.y = 0.47; g.add(cap);
+  const glow = glowSprite(0x39ff88, 2.2, 0.7); g.add(glow);
+  g.visible = false; scene.add(g);
+  return { obj: g, active: false, pos: new THREE.Vector3(), life: 0 };
+})();
+
+const orbMat = glowMat(0xff3df0, 2.5);
+const orbs = makePool(20, () => {
+  const g = new THREE.Group();
+  g.add(mesh(GEO.sphereLo, orbMat, 0.32));
+  g.add(glowSprite(0xff3df0, 1.4, 0.8));
+  return { obj: g, vel: new THREE.Vector3(), life: 0 };
+});
+
+const waves = makePool(8, () => {
+  const m = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 64), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+  m.rotation.x = -Math.PI / 2; m.position.y = 0.15;
+  return { obj: m, r: 0, maxR: 8, speed: 12, hurts: false, hitDone: false, life: 0, kind: '' };
+});
+
+// Floating "+N" texts (drawn on the HUD canvas at projected 3D positions)
+const floaters = [];
+function addFloater(text, pos, color = '#fff', big = false) {
+  if (floaters.length > 14) floaters.shift();
+  floaters.push({ text, pos: pos.clone().setY(pos.y + 2), t: 0, color, big });
+}
+
+function spawnParticles(pos, color, n, speed = 6, size = 0.6, grav = -6) {
+  for (let i = 0; i < n; i++) {
+    const p = particles.get(); if (!p) return;
+    p.obj.material.color.setHex(color);
+    p.obj.position.copy(pos);
+    p.vel.set((Math.random() - 0.5) * 2, Math.random() * 1.2 + 0.2, (Math.random() - 0.5) * 2).normalize().multiplyScalar(speed * (0.5 + Math.random() * 0.7));
+    p.life = 0; p.max = 0.45 + Math.random() * 0.4; p.size = size * (0.7 + Math.random() * 0.6); p.grav = grav;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ENEMIES
+// ---------------------------------------------------------------------------
+const bots = [];         // active bots
+const botPool = {};      // re-use built bot meshes per type
+function getBotMesh(type) {
+  const list = botPool[type] || (botPool[type] = []);
+  const m = list.pop() || buildBot(type);
+  m.visible = true; scene.add(m);
+  return m;
+}
+function releaseBotMesh(b) {
+  b.obj.visible = false; scene.remove(b.obj);
+  (botPool[b.type] || (botPool[b.type] = [])).push(b.obj);
+}
+
+function spawnBot(type, pos) {
+  const st = BOT_STYLE[type];
+  const L = LEVELS[state.level];
+  const obj = getBotMesh(type);
+  let p = pos;
+  if (!p) {
+    // Spawn at the arena rim, away from the player
+    let a = Math.random() * Math.PI * 2;
+    for (let tries = 0; tries < 6; tries++) {
+      const cand = new THREE.Vector3(Math.cos(a) * (ARENA_R - 1), 0, Math.sin(a) * (ARENA_R - 1));
+      if (cand.distanceTo(player.pos) > 9) break;
+      a += Math.PI / 3;
+    }
+    p = new THREE.Vector3(Math.cos(a) * (ARENA_R - 1), 0, Math.sin(a) * (ARENA_R - 1));
+  }
+  const b = {
+    type, obj, pos: p.clone(), vel: new THREE.Vector3(), hp: st.hp, maxHp: st.hp,
+    speed: L.speed * (type === 'drone' ? 0.85 : type === 'bouncer' ? 0.7 : type === 'boss' ? 0.55 : 1) * (0.9 + Math.random() * 0.2),
+    radius: 0.8 * st.size, frozen: 0, chill: 0, flash: 0, t: Math.random() * 10, spawnT: 0,
+    attackCd: 1 + Math.random(), lunge: 0, hopT: 0, y: 0, vy: 0,
+    element: type === 'hot' ? 'hot' : type === 'cold' ? 'cold' : null,
+    knock: new THREE.Vector3(), popping: 0,
+  };
+  obj.position.copy(b.pos);
+  obj.scale.setScalar(0.01);
+  if (obj.userData.bodyMat) obj.userData.bodyMat.emissiveIntensity = (type === 'hot' || type === 'cold') ? 0.35 : 0;
+  bots.push(b);
+  spawnParticles(b.pos.clone().setY(1), 0xffffff, 5, 4, 0.8, 0);
+  if (type === 'hot' && Math.random() < 0.6) spySay('I spy a HOT bot! Use ICE!');
+  if (type === 'cold' && Math.random() < 0.6) spySay('I spy a COLD bot! Use FIRE!');
+  return b;
+}
+
+function spawnBoss() {
+  const b = spawnBot('boss', new THREE.Vector3(0, 0, -ARENA_R + 4));
+  b.radius = 2.4;
+  b.element = 'hot';
+  b.elemTimer = 7;
+  b.stompCd = 4;
+  b.volleyCd = 2.5;
+  b.summonCd = 9;
+  state.boss = b;
+  state.bossSpawned = true;
+  state.shake = 0.5;
+  SFX.boss();
+  spySay('I spy the MEGA GLITCH! Watch its core color!');
+}
+
+// ---------------------------------------------------------------------------
+// COMBAT
+// ---------------------------------------------------------------------------
+function nearestBot(from, maxDist, dirAngle = null, cone = Math.PI) {
+  let best = null, bd = maxDist;
+  for (const b of bots) {
+    if (b.popping) continue;
+    const dx = b.pos.x - from.x, dz = b.pos.z - from.z;
+    const d = Math.hypot(dx, dz);
+    if (d > bd) continue;
+    if (dirAngle !== null) {
+      const ang = Math.atan2(dx, dz);
+      let diff = Math.abs(ang - dirAngle); if (diff > Math.PI) diff = Math.PI * 2 - diff;
+      if (diff > cone) continue;
+    }
+    best = b; bd = d;
+  }
+  return best;
+}
+
+function fireShot(big) {
+  const s = shots.get(); if (!s) return;
+  // Auto-aim: lock on to the closest bot in front of the hero (great on phones)
+  const target = nearestBot(player.pos, 18, player.facing, Math.PI / 3) || nearestBot(player.pos, 7);
+  let ang = player.facing;
+  if (target) { ang = Math.atan2(target.pos.x - player.pos.x, target.pos.z - player.pos.z); player.facing = ang; }
+  const el = player.element;
+  const speed = el === FIRE ? 20 : 25;
+  s.el = el; s.big = big; s.dmg = big ? 3 : 1; s.life = el === FIRE ? 0.6 : 0.75; s.hit.clear();
+  s.vel.set(Math.sin(ang) * speed, 0, Math.cos(ang) * speed);
+  s.obj.position.set(player.pos.x + Math.sin(ang) * 1.1, 1.3 + player.y, player.pos.z + Math.cos(ang) * 1.1);
+  s.obj.rotation.set(0, ang, 0);
+  s.fireBall.visible = el === FIRE; s.iceShard.visible = el === ICE;
+  s.glow.material.color.setHex(el === FIRE ? 0xff7a1a : 0x6fe0ff);
+  const sc = big ? 2.1 : 1;
+  s.obj.scale.setScalar(sc);
+  player.attackAnim = 0.25;
+  if (el === FIRE) SFX.fire(); else SFX.ice();
+}
+
+function damageBot(b, dmg, el, fromPos) {
+  if (b.popping) return;
+  let mult = 1;
+  let label = null;
+  // Elemental weakness: ice beats hot bots, fire beats cold bots
+  if ((b.element === 'hot' && el === ICE) || (b.element === 'cold' && el === FIRE)) { mult = 2; label = 'SUPER!'; }
+  if ((b.element === 'hot' && el === FIRE) || (b.element === 'cold' && el === ICE)) mult = 0.5;
+  // Team combo: melt a frozen bot with FIRE = STEAM BURST
+  if (b.frozen > 0 && el === FIRE) {
+    mult *= 3; b.frozen = 0; label = 'STEAM COMBO!';
+    addScore(50, b.pos, '#ffffff');
+    spawnParticles(b.pos.clone().setY(1.2), 0xffffff, 8, 7, 1.1, 2);
+    SFX.steam();
+    state.shake = Math.max(state.shake, 0.18);
+  }
+  if (el === ICE && b.type !== 'boss') {
+    b.chill += dmg;
+    if (b.chill >= 2 && b.frozen <= 0) { b.frozen = 2.6; b.chill = 0; spawnParticles(b.pos.clone().setY(1), 0xbff0ff, 5, 4, 0.7, 0); }
+  }
+  if (el === ICE && b.type === 'boss') { b.slow = 1.2; }
+  b.hp -= dmg * mult;
+  b.flash = 0.12;
+  if (fromPos && b.type !== 'boss') {
+    const k = b.pos.clone().sub(fromPos).setY(0).normalize().multiplyScalar(b.type === 'bouncer' ? 3 : 7);
+    b.knock.add(k);
+  }
+  state.special = Math.min(100, state.special + (mult > 1 ? 10 : 6));
+  if (label) addFloater(label, b.pos, label === 'SUPER!' ? '#ffe14d' : '#ffffff', true);
+  if (mult > 1 && label === 'SUPER!') addScore(10, b.pos, '#ffe14d', true);
+  spawnParticles(b.pos.clone().setY(1.2 * BOT_STYLE[b.type].size), el === FIRE ? 0xff7a1a : 0x9fe8ff, 3, 5, 0.6);
+  if (b.hp <= 0) popBot(b);
+}
+
+function popBot(b) {
+  // Fixed! The bot pops into sparkles and a golden gear
+  b.popping = 0.01;
+  state.fixed++;
+  state.combo++; state.comboTimer = 2.2;
+  const bonus = state.combo >= 3 ? state.combo * 10 : 0;
+  addScore(BOT_STYLE[b.type].score * (state.level + 1) + bonus, b.pos, '#ffe14d');
+  if (state.combo >= 3) addFloater('COMBO x' + state.combo, b.pos.clone().setY(1.5), '#ff9ff3', true);
+  spawnParticles(b.pos.clone().setY(1.2), BOT_STYLE[b.type].body, 7, 8, 0.9, -4);
+  spawnParticles(b.pos.clone().setY(1.2), 0xffe14d, 4, 6, 0.6, -4);
+  SFX.pop();
+  state.shake = Math.max(state.shake, b.type === 'boss' ? 0.8 : 0.12);
+  if (b.type !== 'boss' && Math.random() < 0.65) dropGear(b.pos);
+  if (b.type === 'boss') {
+    for (let i = 0; i < 6; i++) dropGear(b.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 6, 0, (Math.random() - 0.5) * 6)));
+    // Clear remaining minis with a happy burst
+    for (const o of bots) if (o !== b && !o.popping) { o.popping = 0.01; spawnParticles(o.pos.clone().setY(1), 0xffffff, 2, 5); }
+    state.boss = null;
+  }
+}
+
+function dropGear(pos) {
+  const g = gears.get(); if (!g) return;
+  g.pos.copy(pos).setY(0.9); g.life = 0; g.obj.position.copy(g.pos);
+}
+
+function addScore(n, pos, color = '#ffe14d', small = false) {
+  state.score += n;
+  state.scorePop = 1;
+  if (pos) addFloater('+' + n, pos, color, !small && n >= 300);
+}
+
+function hurtPlayer(amount, fromPos) {
+  if (player.invuln > 0 || state.mode !== 'playing') return;
+  state.energy -= amount;
+  player.invuln = 1.0;
+  state.shake = Math.max(state.shake, 0.25);
+  state.hurtFlash = 0.35;
+  state.combo = 0;
+  SFX.hit();
+  if (fromPos) {
+    const k = player.pos.clone().sub(fromPos).setY(0);
+    if (k.lengthSq() < 0.001) k.set(0, 0, 1);
+    player.vel.add(k.normalize().multiplyScalar(14));
+  }
+  spawnParticles(player.pos.clone().setY(1.3), 0xffffff, 5, 6, 0.7);
+  if (state.energy <= 0) {
+    state.lives--;
+    if (state.lives <= 0) { endGame(false); return; }
+    state.energy = MAX_ENERGY;
+    player.invuln = 2.5;
+    spySay('Rebooting! You got this!');
+  } else if (state.energy < 35 && spy.healCd <= 0 && !battery.active) {
+    dropBattery();
+  }
+}
+
+function dropBattery() {
+  battery.active = true; battery.life = 0;
+  const a = Math.random() * Math.PI * 2;
+  battery.pos.set(player.pos.x + Math.cos(a) * 3.5, 0.9, player.pos.z + Math.sin(a) * 3.5);
+  clampToArena(battery.pos, 1.5);
+  battery.obj.visible = true;
+  spy.healCd = 16;
+  spySay('Here! A repair battery!');
+}
+
+function useSpecial() {
+  if (state.special < 100 || state.mode !== 'playing') return;
+  state.special = 0;
+  player.specialAnim = 0.6;
+  const w = waves.get();
+  if (w) {
+    w.r = 0.5; w.maxR = player.element === FIRE ? 9 : 12; w.speed = 22; w.life = 0; w.hurts = false; w.kind = player.element;
+    w.obj.position.set(player.pos.x, 0.2, player.pos.z);
+    w.obj.material.color.setHex(player.element === FIRE ? 0xff7a1a : 0x9fe8ff);
+  }
+  if (player.element === FIRE) {
+    // FLAME NOVA: big fire blast all around
+    for (const b of bots) if (!b.popping && b.pos.distanceTo(player.pos) < 9 + b.radius) damageBot(b, b.type === 'boss' ? 6 : 3, FIRE, player.pos);
+    spawnParticles(player.pos.clone().setY(1), 0xff7a1a, 12, 12, 1.2, 0);
+    addFloater('FLAME NOVA!', player.pos, '#ff9a3d', true);
+  } else {
+    // BLIZZARD: freeze every bot nearby
+    for (const b of bots) if (!b.popping && b.pos.distanceTo(player.pos) < 12 + b.radius) {
+      if (b.type !== 'boss') { b.frozen = 3.5; b.chill = 0; }
+      damageBot(b, b.type === 'boss' ? 4 : 1, ICE, null);
+    }
+    spawnParticles(player.pos.clone().setY(1), 0xbff0ff, 12, 12, 1.2, 0);
+    addFloater('BLIZZARD!', player.pos, '#bff0ff', true);
+  }
+  state.shake = 0.4;
+  state.flash = 0.25;
+  SFX.special();
+}
+
+function swapHero() {
+  if (player.swapCd > 0 || state.mode !== 'playing') return;
+  player.element = player.element === FIRE ? ICE : FIRE;
+  player.swapCd = 0.5;
+  heroes.fire.visible = player.element === FIRE;
+  heroes.ice.visible = player.element === ICE;
+  // Tag-in burst pushes nearby bots back
+  for (const b of bots) {
+    if (b.popping || b.type === 'boss') continue;
+    const d = b.pos.distanceTo(player.pos);
+    if (d < 4) b.knock.add(b.pos.clone().sub(player.pos).setY(0).normalize().multiplyScalar(10));
+  }
+  spawnParticles(player.pos.clone().setY(1.2), player.element === FIRE ? 0xff7a1a : 0x9fe8ff, 8, 7, 0.9, 0);
+  SFX.swap();
+}
+
+function doJump() {
+  if (!player.onGround || state.mode !== 'playing') return;
+  player.vy = 11.5; player.onGround = false;
+  SFX.jump();
+}
+
+function spySay(text) {
+  spy.bubble = text; spy.bubbleT = 2.6;
+}
+
+function clampToArena(v, margin = 1) {
+  const d = Math.hypot(v.x, v.z);
+  const max = ARENA_R - margin;
+  if (d > max) { v.x *= max / d; v.z *= max / d; }
+}
+
+// ---------------------------------------------------------------------------
+// INPUT: virtual joystick + buttons (multi-touch), mouse, keyboard
+// ---------------------------------------------------------------------------
+const input = { mx: 0, mz: 0, attackHeld: false, keys: {} };
+const joy = { active: false, id: null, bx: 0, by: 0, x: 0, y: 0, r: 60 };
+const buttons = {
+  attack:  { x: 0, y: 0, r: 46, label: 'ATTACK', pressed: false, id: null },
+  special: { x: 0, y: 0, r: 38, label: 'SUPER',  pressed: false, id: null },
+  jump:    { x: 0, y: 0, r: 36, label: 'JUMP',   pressed: false, id: null },
+  swap:    { x: 0, y: 0, r: 36, label: 'SWAP',   pressed: false, id: null },
+};
+const muteBtn = { x: 34, y: 34, r: 26 };
+
+function layoutButtons() {
+  const s = Math.max(0.85, Math.min(1.25, Math.min(W, H) / 420));
+  const pad = 22 * s;
+  const A = buttons.attack; A.r = 46 * s; A.x = W - pad - A.r; A.y = H - pad - A.r - 6;
+  const S = buttons.special; S.r = 38 * s; S.x = A.x - A.r * 1.35; S.y = A.y - A.r * 1.55;
+  const J = buttons.jump; J.r = 36 * s; J.x = A.x - A.r * 2.3; J.y = A.y + 4 * s;
+  const P = buttons.swap; P.r = 36 * s; P.x = A.x + 2 * s; P.y = A.y - A.r * 2.35;
+  joy.r = 60 * s;
+  joy.homeX = pad + joy.r + 10; joy.homeY = H - pad - joy.r - 10;
+  muteBtn.r = 24; muteBtn.x = 34; muteBtn.y = 34;
+}
+
+function hitButton(x, y) {
+  for (const k in buttons) {
+    const b = buttons[k];
+    // generous hit area: 1.2x the drawn radius (min 32px radius = 64px target)
+    if (Math.hypot(x - b.x, y - b.y) < Math.max(32, b.r * 1.2)) return k;
+  }
+  return null;
+}
+
+function pressButton(k) {
+  const b = buttons[k]; b.pressed = true;
+  if (k === 'attack') { input.attackHeld = true; player.charge = 0; player.charging = true; }
+  if (k === 'special') useSpecial();
+  if (k === 'jump') doJump();
+  if (k === 'swap') swapHero();
+}
+function releaseButton(k) {
+  const b = buttons[k]; b.pressed = false; b.id = null;
+  if (k === 'attack') releaseAttack();
+}
+function releaseAttack() {
+  if (!input.attackHeld) return;
+  input.attackHeld = false;
+  if (state.mode === 'playing') {
+    // Tap = quick blast. Hold (0.45s+) = charged mega blast.
+    if (player.charge >= 0.45) fireShot(true);
+    else if (player.attackCd <= 0) { fireShot(false); player.attackCd = 0.16; }
+  }
+  player.charging = false; player.charge = 0;
+}
+
+function tapScreen(x, y) {
+  ensureAudio();
+  if (Math.hypot(x - muteBtn.x, y - muteBtn.y) < 34) { muted = !muted; return true; }
+  if (state.mode === 'start' || state.mode === 'gameover' || state.mode === 'win') {
+    if (state.modeTime > 0.6) startGame();
+    return true;
+  }
+  return false;
+}
+
+function pointerDown(id, x, y) {
+  if (tapScreen(x, y)) return;
+  if (state.mode !== 'playing') return;
+  const k = hitButton(x, y);
+  if (k && buttons[k].id === null) { buttons[k].id = id; pressButton(k); return; }
+  // Left side of the screen: floating joystick appears under the thumb
+  if (!joy.active && x < W * 0.55) {
+    joy.active = true; joy.id = id; joy.bx = x; joy.by = y; joy.x = x; joy.y = y;
+  }
+}
+function pointerMove(id, x, y) {
+  if (joy.active && joy.id === id) {
+    let dx = x - joy.bx, dy = y - joy.by;
+    const d = Math.hypot(dx, dy);
+    // Base follows the thumb if it drags too far (feels natural)
+    if (d > joy.r) {
+      const over = d - joy.r;
+      joy.bx += dx / d * over; joy.by += dy / d * over;
+      dx = x - joy.bx; dy = y - joy.by;
+    }
+    joy.x = x; joy.y = y;
+  }
+}
+function pointerUp(id) {
+  if (joy.active && joy.id === id) { joy.active = false; joy.id = null; }
+  for (const k in buttons) if (buttons[k].id === id) releaseButton(k);
+}
+
+hudCanvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) pointerDown(t.identifier, t.clientX, t.clientY);
+}, { passive: false });
+hudCanvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) pointerMove(t.identifier, t.clientX, t.clientY);
+}, { passive: false });
+const touchEnd = e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) pointerUp(t.identifier);
+};
+hudCanvas.addEventListener('touchend', touchEnd, { passive: false });
+hudCanvas.addEventListener('touchcancel', touchEnd, { passive: false });
+
+let mouseDown = false;
+hudCanvas.addEventListener('mousedown', e => { mouseDown = true; pointerDown('mouse', e.clientX, e.clientY); });
+window.addEventListener('mousemove', e => { if (mouseDown) pointerMove('mouse', e.clientX, e.clientY); });
+window.addEventListener('mouseup', () => { if (mouseDown) { mouseDown = false; pointerUp('mouse'); } });
+
+const KEYMAP = {
+  attack: ['KeyJ', 'KeyZ', 'Enter'], special: ['KeyK', 'KeyX'], jump: ['Space'],
+  swap: ['KeyL', 'KeyC', 'ShiftLeft', 'ShiftRight', 'KeyQ', 'KeyE'],
+};
+window.addEventListener('keydown', e => {
+  if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
+  if (e.repeat) return;
+  input.keys[e.code] = true;
+  ensureAudio();
+  if (e.code === 'KeyM') { muted = !muted; return; }
+  if (state.mode !== 'playing') {
+    if ((e.code === 'Space' || e.code === 'Enter') && state.mode !== 'card' && state.modeTime > 0.6) startGame();
+    return;
+  }
+  for (const k in KEYMAP) if (KEYMAP[k].includes(e.code)) { buttons[k].id = 'key'; pressButton(k); }
+});
+window.addEventListener('keyup', e => {
+  input.keys[e.code] = false;
+  for (const k in KEYMAP) if (KEYMAP[k].includes(e.code) && buttons[k].pressed) releaseButton(k);
+});
+// Release everything if the page loses focus (prevents stuck buttons)
+window.addEventListener('blur', () => {
+  input.keys = {}; joy.active = false; joy.id = null; mouseDown = false;
+  for (const k in buttons) { buttons[k].pressed = false; buttons[k].id = null; }
+  input.attackHeld = false; player.charging = false;
+});
+
+function readMoveInput() {
+  let mx = 0, mz = 0;
+  const K = input.keys;
+  if (K.KeyA || K.ArrowLeft) mx -= 1;
+  if (K.KeyD || K.ArrowRight) mx += 1;
+  if (K.KeyW || K.ArrowUp) mz -= 1;
+  if (K.KeyS || K.ArrowDown) mz += 1;
+  if (joy.active) {
+    const dx = joy.x - joy.bx, dy = joy.y - joy.by;
+    const d = Math.hypot(dx, dy);
+    if (d > 6) { const m = Math.min(1, d / joy.r); mx = dx / d * m; mz = dy / d * m; }
+  }
+  const len = Math.hypot(mx, mz);
+  if (len > 1) { mx /= len; mz /= len; }
+  input.mx = mx; input.mz = mz;
+}
+
+// ---------------------------------------------------------------------------
+// GAME FLOW
+// ---------------------------------------------------------------------------
+function resetWorld() {
+  for (const b of bots) releaseBotMesh(b);
+  bots.length = 0;
+  shots.clear(); particles.clear(); gears.clear(); orbs.clear(); waves.clear();
+  battery.active = false; battery.obj.visible = false;
+  floaters.length = 0;
+  state.boss = null; state.bossSpawned = false;
+}
+
+function startGame() {
+  ensureAudio();
+  state.score = 0; state.shownScore = 0; state.lives = MAX_LIVES; state.energy = MAX_ENERGY;
+  state.special = 0; state.combo = 0;
+  player.element = FIRE; heroes.fire.visible = true; heroes.ice.visible = false;
+  xpTimer = 0;
+  startLevel(0);
+}
+
+function startLevel(idx) {
+  resetWorld();
+  state.level = idx; state.fixed = 0; state.spawned = 0; state.spawnTimer = 1.2;
+  player.pos.set(0, 0, 4); player.vel.set(0, 0, 0); player.y = 0; player.vy = 0; player.invuln = 0;
+  player.facing = Math.PI;
+  spy.healCd = 10;
+  applyLevelLook(idx);
+  setMode('card');
+  state.cardTimer = 2;
+}
+
+function setMode(m) { state.mode = m; state.modeTime = 0; }
+
+function endGame(won) {
+  setMode(won ? 'win' : 'gameover');
+  if (won) SFX.level(); else SFX.over();
+  onGameOver(state.score);
+  input.attackHeld = false; player.charging = false; joy.active = false;
+  for (const k in buttons) { buttons[k].pressed = false; buttons[k].id = null; }
+}
+
+function levelComplete() {
+  SFX.level();
+  // Bonus for energy left
+  addScore(Math.round(state.energy) * 5, player.pos, '#39ff88');
+  state.levelDone = true;
+  state.levelDoneTimer = 1.4; // short victory moment, then next level (handled in update)
+  spySay(state.level + 1 < LEVELS.length ? 'Area fixed! Next stop!' : 'Robot City is SAVED!');
+}
+
+// ---------------------------------------------------------------------------
+// UPDATE
+// ---------------------------------------------------------------------------
+const tmpV = new THREE.Vector3();
+let elapsed = 0;
+
+function update(dt) {
+  elapsed += dt;
+  state.modeTime += dt;
+  state.shake = Math.max(0, state.shake - dt);
+  state.flash = Math.max(0, state.flash - dt);
+  state.hurtFlash = Math.max(0, state.hurtFlash - dt);
+  state.scorePop = Math.max(0, state.scorePop - dt * 4);
+  state.shownScore += (state.score - state.shownScore) * Math.min(1, dt * 10);
+  if (Math.abs(state.score - state.shownScore) < 1) state.shownScore = state.score;
+  if (spy.bubbleT > 0) spy.bubbleT -= dt;
+
+  updateAmbient(dt);
+
+  if (state.mode === 'card') {
+    state.cardTimer -= dt;
+    idleAnimate(dt);
+    if (state.cardTimer <= 0) { setMode('playing'); state.levelDone = false; spySay(state.level === 0 ? 'I spy Glitch Bots! Let\'s fix them!' : 'Let\'s go, team!'); }
+    updateCamera(dt);
+    return;
+  }
+  if (state.mode !== 'playing') {
+    idleAnimate(dt);
+    updateCamera(dt);
+    updateParticles(dt);
+    return;
+  }
+
+  // XP every 60s of active play
+  xpTimer += dt;
+  if (xpTimer >= 60) { xpTimer -= 60; reportXP(); }
+
+  updatePlayer(dt);
+  updateSpawning(dt);
+  updateBots(dt);
+  updateShots(dt);
+  updateOrbs(dt);
+  updateWaves(dt);
+  updateGears(dt);
+  updateSpy(dt);
+  updateParticles(dt);
+  updateCamera(dt);
+
+  if (state.comboTimer > 0) { state.comboTimer -= dt; if (state.comboTimer <= 0) state.combo = 0; }
+  if (spy.healCd > 0) spy.healCd -= dt;
+
+  // Level complete check
+  const L = LEVELS[state.level];
+  if (state.levelDone) {
+    state.levelDoneTimer -= dt;
+    if (state.levelDoneTimer <= 0) {
+      if (state.level + 1 < LEVELS.length) startLevel(state.level + 1);
+      else endGame(true);
+    }
+  } else {
+    const goalDone = state.fixed >= L.goal;
+    if (L.boss) {
+      if (goalDone && !state.bossSpawned && bots.filter(b => !b.popping).length === 0) spawnBoss();
+      if (state.bossSpawned && !state.boss && bots.filter(b => !b.popping).length === 0) levelComplete();
+    } else if (goalDone && bots.filter(b => !b.popping).length === 0) {
+      levelComplete();
+    }
+  }
+}
+
+function updatePlayer(dt) {
+  readMoveInput();
+  const hero = heroes[player.element];
+  const ud = hero.userData;
+  player.swapCd = Math.max(0, player.swapCd - dt);
+  player.attackCd = Math.max(0, player.attackCd - dt);
+  player.invuln = Math.max(0, player.invuln - dt);
+  player.attackAnim = Math.max(0, player.attackAnim - dt);
+  player.specialAnim = Math.max(0, player.specialAnim - dt);
+  if (player.charging) player.charge += dt;
+
+  const moving = Math.hypot(input.mx, input.mz) > 0.05;
+  const spd = PLAYER_SPEED * (player.charging && player.charge > 0.2 ? 0.6 : 1);
+  const targetVx = input.mx * spd, targetVz = input.mz * spd;
+  // Smooth acceleration, plus knockback decay
+  player.vel.x += (targetVx - player.vel.x) * Math.min(1, dt * 14);
+  player.vel.z += (targetVz - player.vel.z) * Math.min(1, dt * 14);
+  player.pos.x += player.vel.x * dt;
+  player.pos.z += player.vel.z * dt;
+  clampToArena(player.pos, 0.8);
+  if (moving) {
+    const targetFacing = Math.atan2(input.mx, input.mz);
+    let diff = targetFacing - player.facing;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    player.facing += diff * Math.min(1, dt * 16);
+    player.walkT += dt * 12;
+  } else {
+    // Face nearest bot when standing still
+    const nb = nearestBot(player.pos, 10);
+    if (nb) {
+      const t = Math.atan2(nb.pos.x - player.pos.x, nb.pos.z - player.pos.z);
+      let diff = t - player.facing;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      player.facing += diff * Math.min(1, dt * 6);
+    }
+    player.walkT *= 0.9;
+  }
+  // Jump physics
+  player.vy -= 30 * dt;
+  player.y += player.vy * dt;
+  if (player.y <= 0) { player.y = 0; player.vy = 0; player.onGround = true; }
+
+  // Held attack with no charge: auto repeat-fire for kids who hold the button
+  if (player.charging && player.charge > 1.6) {
+    fireShot(true); player.charge = 0.0;
+  }
+
+  // Apply to model
+  hero.position.set(player.pos.x, player.y, player.pos.z);
+  hero.rotation.y = player.facing;
+  animateHero(hero, dt, moving);
+  hero.visible = player.invuln > 0 ? (Math.floor(elapsed * 14) % 2 === 0) : true;
+  heroes[player.element === FIRE ? ICE : FIRE].visible = false;
+  heroLight.position.set(player.pos.x, 2 + player.y, player.pos.z);
+  heroLight.color.setHex(HERO_INFO[player.element].glow);
+  heroLight.intensity = 5 + (player.charging ? Math.min(player.charge, 1) * 12 : 0) + (player.specialAnim > 0 ? 20 : 0);
+  sun.position.set(player.pos.x + 12, 24, player.pos.z + 10);
+  sun.target.position.set(player.pos.x, 0, player.pos.z);
+
+  // Pick up gears & battery
+  for (const g of gears) {
+    if (!g.active) continue;
+    const d = Math.hypot(g.pos.x - player.pos.x, g.pos.z - player.pos.z);
+    if (d < 3.2) { g.pos.lerp(tmpV.set(player.pos.x, 1, player.pos.z), Math.min(1, dt * 8)); }
+    if (d < 1.1) {
+      gears.free(g);
+      addScore(25, player.pos, '#ffd23f', true);
+      state.special = Math.min(100, state.special + 12);
+      spawnParticles(player.pos.clone().setY(1.2), 0xffd23f, 4, 5, 0.6);
+      SFX.collect();
+    }
+  }
+  if (battery.active && Math.hypot(battery.pos.x - player.pos.x, battery.pos.z - player.pos.z) < 1.4) {
+    battery.active = false; battery.obj.visible = false;
+    state.energy = Math.min(MAX_ENERGY, state.energy + 45);
+    addFloater('+ENERGY', player.pos, '#39ff88', true);
+    spawnParticles(player.pos.clone().setY(1.2), 0x39ff88, 8, 6, 0.8, 2);
+    SFX.collect();
+  }
+}
+
+function animateHero(hero, dt, moving) {
+  const u = hero.userData;
+  const sw = Math.sin(player.walkT) * (moving ? 0.8 : 0);
+  u.legL.rotation.x = sw; u.legR.rotation.x = -sw;
+  u.armL.rotation.x = -sw * 0.8; u.armR.rotation.x = sw * 0.8;
+  u.rig.position.y = moving ? Math.abs(Math.sin(player.walkT)) * 0.12 : Math.sin(elapsed * 2.5) * 0.04;
+  // Attack pose: throw the right arm forward
+  if (player.attackAnim > 0) { u.armR.rotation.x = -1.6; u.armR.rotation.z = 0; }
+  if (player.charging && player.charge > 0.2) {
+    u.armR.rotation.x = -1.3; u.armL.rotation.x = -1.3;
+    u.core.scale.setScalar(0.14 + Math.min(player.charge, 1) * 0.12);
+  } else u.core.scale.setScalar(0.14);
+  if (player.specialAnim > 0) { u.rig.rotation.y += dt * 25; } else u.rig.rotation.y = 0;
+  if (!player.onGround) { u.legL.rotation.x = -0.6; u.legR.rotation.x = 0.4; }
+  u.crown.forEach((c, i) => {
+    c.position.y = c.userData.baseY + Math.sin(elapsed * 10 + i * 1.7) * (u.kind === FIRE ? 0.06 : 0.02);
+    if (u.kind === FIRE) c.scale.y = 0.75 + Math.sin(elapsed * 14 + i) * 0.12;
+    else c.rotation.y += dt * 1.5;
+  });
+  u.jetGlow.material.opacity = 0.5 + Math.random() * 0.4 + (player.onGround ? 0 : 0.3);
+}
+
+function idleAnimate(dt) {
+  // Start / card / end screens: heroes pose and i-SPY floats around
+  const t = elapsed;
+  const showBoth = state.mode === 'start' || state.mode === 'win';
+  if (showBoth) {
+    heroes.fire.visible = true; heroes.ice.visible = true;
+    heroes.fire.position.set(-1.7, 0, 3); heroes.ice.position.set(1.7, 0, 3);
+    heroes.fire.rotation.y = 0.25 + Math.sin(t * 0.8) * 0.15;
+    heroes.ice.rotation.y = -0.25 - Math.sin(t * 0.8) * 0.15;
+  } else {
+    const h = heroes[player.element];
+    h.visible = true; heroes[player.element === FIRE ? ICE : FIRE].visible = false;
+    h.position.set(player.pos.x, player.y, player.pos.z);
+    h.rotation.y = player.facing;
+  }
+  for (const k of [FIRE, ICE]) {
+    const u = heroes[k].userData;
+    u.rig.position.y = Math.sin(t * 2.5 + (k === ICE ? 1 : 0)) * 0.05;
+    u.rig.rotation.y = 0;
+    u.legL.rotation.x = u.legR.rotation.x = 0;
+    u.armL.rotation.x = 0; u.armR.rotation.x = state.mode === 'win' ? -2.8 : Math.sin(t * 3) * 0.1;
+    u.crown.forEach((c, i) => { c.position.y = c.userData.baseY + Math.sin(t * 10 + i) * 0.04; });
+  }
+  const sp = showBoth ? new THREE.Vector3(0, 4 + Math.sin(t * 2) * 0.3, 1.8) : new THREE.Vector3(player.pos.x + 1.8, 3.2, player.pos.z + 0.5);
+  spy.pos.lerp(sp, Math.min(1, dt * 4));
+  spy.obj.position.copy(spy.pos);
+  spy.obj.rotation.y = Math.sin(t) * 0.4;
+  spy.obj.userData.prop.rotation.y += dt * 20;
+  heroLight.position.set(0, 2.5, 3);
+  sun.position.set(12, 24, 10); sun.target.position.set(0, 0, 0);
+  for (const b of bots) animateBotIdle(b, dt);
+}
+
+function updateSpawning(dt) {
+  const L = LEVELS[state.level];
+  if (state.bossSpawned) return;
+  const alive = bots.filter(b => !b.popping).length;
+  if (state.spawned >= L.goal) return;
+  state.spawnTimer -= dt;
+  if (state.spawnTimer <= 0 && alive < L.maxAlive) {
+    const type = L.types[Math.floor(Math.random() * L.types.length)];
+    spawnBot(type);
+    state.spawned++;
+    state.spawnTimer = L.spawnGap * (0.7 + Math.random() * 0.6);
+  }
+}
+
+function updateBots(dt) {
+  for (let i = bots.length - 1; i >= 0; i--) {
+    const b = bots[i];
+    const o = b.obj;
+    const st = BOT_STYLE[b.type];
+    b.t += dt;
+    b.spawnT = Math.min(1, b.spawnT + dt * 3);
+    b.flash = Math.max(0, b.flash - dt);
+
+    // Pop animation: grow, spin, shrink away
+    if (b.popping) {
+      b.popping += dt;
+      const p = b.popping / 0.35;
+      o.scale.setScalar(st.size * (p < 0.3 ? 1 + p : Math.max(0.01, 1.3 - (p - 0.3) * 2)));
+      o.rotation.y += dt * 20;
+      if (b.popping > 0.35) { releaseBotMesh(b); bots.splice(i, 1); }
+      continue;
+    }
+    o.scale.setScalar(st.size * (b.spawnT < 1 ? easeOutBack(b.spawnT) : 1));
+
+    const toP = tmpV.set(player.pos.x - b.pos.x, 0, player.pos.z - b.pos.z);
+    const dist = toP.length();
+    toP.normalize();
+
+    if (b.frozen > 0) {
+      b.frozen -= dt;
+      o.userData.bodyMat.emissive.setHex(0x66ccff); o.userData.bodyMat.emissiveIntensity = 0.9;
+      if (b.frozen <= 0) o.userData.bodyMat.emissiveIntensity = (b.element ? 0.35 : 0);
+    } else if (b.type === 'boss') {
+      updateBoss(b, dt, dist, toP);
+    } else if (b.type === 'drone') {
+      // Drones hover at mid range and toss zap blobs
+      const want = dist > 9 ? 1 : dist < 6 ? -1 : 0;
+      const side = new THREE.Vector3(-toP.z, 0, toP.x).multiplyScalar(Math.sin(b.t * 0.9) * 0.7);
+      b.vel.copy(toP).multiplyScalar(want).add(side).multiplyScalar(b.speed);
+      b.attackCd -= dt;
+      if (b.attackCd <= 0 && dist < 16) {
+        b.attackCd = 2.4 - state.level * 0.25 + Math.random();
+        shootOrb(b.pos.clone().setY(2), toP, 8 + state.level);
+      }
+    } else if (b.type === 'bouncer') {
+      // Bouncers hop toward you and make a shock ring when they land
+      b.hopT -= dt;
+      if (b.y <= 0 && b.hopT <= 0) { b.vy = 12; b.hopT = 1.6; }
+      b.vel.copy(toP).multiplyScalar(b.y > 0 ? b.speed * 1.6 : 0);
+    } else {
+      // Basic / hot / cold: chase + lunge "bonk"
+      b.vel.copy(toP).multiplyScalar(b.speed * (b.lunge > 0 ? 2.4 : 1));
+      if (b.lunge > 0) b.lunge -= dt;
+      b.attackCd -= dt;
+      if (dist < 3.2 && b.attackCd <= 0) { b.lunge = 0.3; b.attackCd = 1.6; }
+    }
+    if (b.slow > 0) { b.slow -= dt; b.vel.multiplyScalar(0.5); }
+    if (b.frozen > 0) b.vel.set(0, 0, 0);
+
+    // Separation so bots don't stack
+    for (const other of bots) {
+      if (other === b || other.popping) continue;
+      const dx = b.pos.x - other.pos.x, dz = b.pos.z - other.pos.z;
+      const d = Math.hypot(dx, dz), min = b.radius + other.radius;
+      if (d > 0.001 && d < min) { b.pos.x += dx / d * (min - d) * 0.5; b.pos.z += dz / d * (min - d) * 0.5; }
+    }
+
+    b.pos.x += (b.vel.x + b.knock.x) * dt;
+    b.pos.z += (b.vel.z + b.knock.z) * dt;
+    b.knock.multiplyScalar(Math.max(0, 1 - dt * 6));
+    clampToArena(b.pos, b.radius);
+
+    // Bouncer vertical motion
+    if (b.type === 'bouncer' || b.type === 'boss') {
+      b.vy -= 30 * dt; b.y += b.vy * dt;
+      if (b.y <= 0) {
+        if (b.vy < -8) landingWave(b);
+        b.y = 0; b.vy = 0;
+      }
+    }
+
+    // Touch damage (only while not frozen)
+    if (b.frozen <= 0 && dist < b.radius + 0.7 && player.y < 1.2 * (b.type === 'boss' ? 2 : 1)) {
+      hurtPlayer(b.type === 'boss' ? 22 : b.type === 'bouncer' ? 16 : 12, b.pos);
+      if (b.type !== 'boss') b.knock.add(toP.clone().multiplyScalar(-8));
+    }
+
+    // Visuals
+    o.position.set(b.pos.x, (b.type === 'drone' ? 2.2 + Math.sin(b.t * 3) * 0.3 : 0) + b.y, b.pos.z);
+    o.rotation.y = Math.atan2(toP.x, toP.z);
+    const rig = o.userData.rig;
+    const mv = b.frozen > 0 ? 0 : 1;
+    rig.rotation.z = Math.sin(b.t * 10) * 0.08 * mv;
+    rig.position.y = Math.abs(Math.sin(b.t * 10)) * 0.1 * mv;
+    if (o.userData.arms) { o.userData.arms[0].rotation.x = Math.sin(b.t * 10) * 0.6 * mv; o.userData.arms[1].rotation.x = -Math.sin(b.t * 10) * 0.6 * mv; }
+    o.userData.bulb.visible = Math.floor(b.t * 3) % 2 === 0;
+    o.userData.eyes.forEach((e, k) => { e.position.x = (k ? 0.26 : -0.26) + Math.sin(b.t * 4 + k) * 0.05; });
+    if (b.flash > 0) { o.userData.bodyMat.emissive.setHex(0xffffff); o.userData.bodyMat.emissiveIntensity = 1.2; }
+    else if (b.frozen <= 0) {
+      if (b.type === 'boss') {
+        const c = b.element === 'hot' ? 0xff3300 : 0x0088ff;
+        o.userData.bodyMat.emissive.setHex(c); o.userData.bodyMat.emissiveIntensity = 0.3;
+        o.userData.core.material.color.setHex(b.element === 'hot' ? 0xff5a00 : 0x3dc2ff);
+        o.userData.core.material.emissive.setHex(b.element === 'hot' ? 0xff5a00 : 0x3dc2ff);
+      } else {
+        o.userData.bodyMat.emissive.setHex(b.element === 'hot' ? 0xff3300 : b.element === 'cold' ? 0x0088ff : 0x000000);
+        o.userData.bodyMat.emissiveIntensity = b.element ? 0.35 : 0;
+      }
+    }
+  }
+}
+
+function animateBotIdle(b, dt) {
+  b.t += dt;
+  b.obj.userData.rig.rotation.z = Math.sin(b.t * 3) * 0.05;
+}
+
+function updateBoss(b, dt, dist, toP) {
+  // MEGA GLITCH: its core switches HOT/COLD. Use the opposite element!
+  b.elemTimer -= dt;
+  if (b.elemTimer <= 0) {
+    b.element = b.element === 'hot' ? 'cold' : 'hot';
+    b.elemTimer = 7;
+    spySay(b.element === 'hot' ? 'Core is HOT! Use ICE!' : 'Core is COLD! Use FIRE!');
+    spawnParticles(b.pos.clone().setY(3), b.element === 'hot' ? 0xff5a00 : 0x3dc2ff, 6, 8, 1.2, 0);
+  }
+  b.vel.copy(toP).multiplyScalar(dist > 5 ? b.speed : 0);
+  b.stompCd -= dt; b.volleyCd -= dt; b.summonCd -= dt;
+  if (b.stompCd <= 0 && b.y <= 0) { b.vy = 14; b.stompCd = 5 + Math.random() * 1.5; spySay('It\'s gonna STOMP! JUMP!'); }
+  if (b.volleyCd <= 0) {
+    b.volleyCd = 3.2;
+    for (let k = -2; k <= 2; k++) {
+      const a = Math.atan2(toP.x, toP.z) + k * 0.28;
+      shootOrb(b.pos.clone().setY(3.5), new THREE.Vector3(Math.sin(a), 0, Math.cos(a)), 9);
+    }
+  }
+  if (b.summonCd <= 0 && bots.filter(x => !x.popping).length < 4) {
+    b.summonCd = 10;
+    spawnBot(Math.random() < 0.5 ? 'hot' : 'cold');
+    spawnBot('basic');
+  }
+}
+
+function landingWave(b) {
+  const w = waves.get(); if (!w) return;
+  w.r = b.radius * 0.8; w.maxR = b.type === 'boss' ? 15 : 6; w.speed = b.type === 'boss' ? 11 : 9;
+  w.life = 0; w.hurts = true; w.hitDone = false; w.kind = 'shock';
+  w.obj.position.set(b.pos.x, 0.15, b.pos.z);
+  w.obj.material.color.setHex(b.type === 'boss' ? 0xff3df0 : 0x7dff9a);
+  state.shake = Math.max(state.shake, b.type === 'boss' ? 0.35 : 0.12);
+  SFX.boss();
+}
+
+function shootOrb(pos, dir, speed) {
+  const o = orbs.get(); if (!o) return;
+  o.obj.position.copy(pos);
+  o.vel.copy(dir).setY(0).normalize().multiplyScalar(speed);
+  o.life = 0;
+}
+
+function updateShots(dt) {
+  for (const s of shots) {
+    if (!s.active) continue;
+    s.life -= dt;
+    s.obj.position.addScaledVector(s.vel, dt);
+    s.obj.rotation.z += dt * 12;
+    if (s.el === FIRE) s.glow.scale.setScalar(1.6 + Math.random() * 0.5);
+    if (s.life <= 0 || Math.hypot(s.obj.position.x, s.obj.position.z) > ARENA_R + 3) { shots.free(s); continue; }
+    for (const b of bots) {
+      if (b.popping || s.hit.has(b)) continue;
+      const by = b.type === 'drone' ? 2.2 : 1;
+      const dx = b.pos.x - s.obj.position.x, dz = b.pos.z - s.obj.position.z;
+      const dy = (by + b.y) - s.obj.position.y;
+      const hitR = b.radius + (s.big ? 0.9 : 0.45);
+      if (dx * dx + dz * dz < hitR * hitR && Math.abs(dy) < 2.2 * BOT_STYLE[b.type].size) {
+        damageBot(b, s.dmg, s.el, s.obj.position);
+        s.hit.add(b);
+        if (!s.big) { shots.free(s); break; } // big shots pierce through
+      }
+    }
+  }
+}
+
+function updateOrbs(dt) {
+  for (const o of orbs) {
+    if (!o.active) continue;
+    o.life += dt;
+    o.obj.position.addScaledVector(o.vel, dt);
+    o.obj.position.y = Math.max(1.1, o.obj.position.y - dt * 2);
+    o.obj.scale.setScalar(1 + Math.sin(o.life * 20) * 0.15);
+    const dx = o.obj.position.x - player.pos.x, dz = o.obj.position.z - player.pos.z;
+    if (dx * dx + dz * dz < 0.9 && player.y < 1.4) { hurtPlayer(10, o.obj.position); orbs.free(o); continue; }
+    // Your shots can pop zap blobs too
+    for (const s of shots) {
+      if (!s.active) continue;
+      if (s.obj.position.distanceToSquared(o.obj.position) < 1.2) { orbs.free(o); spawnParticles(o.obj.position, 0xff3df0, 3, 4, 0.5); addScore(5, null); break; }
+    }
+    if (o.life > 4 || Math.hypot(o.obj.position.x, o.obj.position.z) > ARENA_R + 2) orbs.free(o);
+  }
+}
+
+function updateWaves(dt) {
+  for (const w of waves) {
+    if (!w.active) continue;
+    w.r += w.speed * dt; w.life += dt;
+    w.obj.scale.setScalar(w.r);
+    w.obj.material.opacity = Math.max(0, 0.85 * (1 - w.r / w.maxR));
+    if (w.hurts && !w.hitDone) {
+      const d = Math.hypot(player.pos.x - w.obj.position.x, player.pos.z - w.obj.position.z);
+      if (Math.abs(d - w.r) < 0.7 && player.y < 0.5) { w.hitDone = true; hurtPlayer(w.maxR > 10 ? 20 : 14, w.obj.position); }
+    }
+    if (w.r >= w.maxR) waves.free(w);
+  }
+}
+
+function updateGears(dt) {
+  for (const g of gears) {
+    if (!g.active) continue;
+    g.life += dt;
+    g.obj.position.set(g.pos.x, g.pos.y + Math.sin(g.life * 4) * 0.2, g.pos.z);
+    g.obj.rotation.y += dt * 3;
+    g.glow.material.opacity = 0.5 + Math.sin(g.life * 6) * 0.25;
+    if (g.life > 12) gears.free(g);
+    else if (g.life > 9) g.obj.visible = Math.floor(g.life * 8) % 2 === 0;
+  }
+  if (battery.active) {
+    battery.life += dt;
+    battery.obj.position.set(battery.pos.x, battery.pos.y + Math.sin(battery.life * 4) * 0.25, battery.pos.z);
+    battery.obj.rotation.y += dt * 2;
+    if (battery.life > 14) { battery.active = false; battery.obj.visible = false; }
+  }
+}
+
+function updateSpy(dt) {
+  // i-SPY orbits the hero, spies the nearest bot and zaps it
+  const t = elapsed;
+  // Hovers just behind the hero's shoulder so it never blocks the view
+  const want = tmpV.set(player.pos.x + 2.1 + Math.cos(t * 1.3) * 0.6, 3.3 + Math.sin(t * 2.3) * 0.3, player.pos.z - 1.4 + Math.sin(t * 1.3) * 0.5);
+  spy.pos.lerp(want, Math.min(1, dt * 3.5));
+  spy.obj.position.copy(spy.pos);
+  spy.obj.userData.prop.rotation.y += dt * 25;
+  spy.obj.userData.bulb.material.emissiveIntensity = 2 + Math.sin(t * 8) * 1.5;
+  spy.cd -= dt;
+  if (!spy.target || spy.target.popping || !bots.includes(spy.target)) spy.target = nearestBot(spy.pos, 13);
+  if (spy.target) {
+    const tp = spy.target.pos;
+    spy.obj.lookAt(tp.x, 1, tp.z);
+    reticle.visible = true;
+    reticle.position.set(tp.x, 0.08, tp.z);
+    reticle.scale.setScalar(spy.target.radius * 1.6 + Math.sin(t * 8) * 0.1);
+    if (spy.cd <= 0) {
+      spy.cd = LEVELS[state.level].spyRate;
+      spy.beam = 0.18;
+      damageBot(spy.target, 1, null, spy.pos);
+      SFX.spy();
+    }
+  } else {
+    reticle.visible = false;
+    spy.obj.rotation.y = player.facing;
+  }
+  if (spy.beam > 0 && spy.target) {
+    spy.beam -= dt;
+    beam.visible = true;
+    const p = beamGeo.attributes.position;
+    p.setXYZ(0, spy.pos.x, spy.pos.y, spy.pos.z);
+    p.setXYZ(1, spy.target.pos.x, 1 + spy.target.y + (spy.target.type === 'drone' ? 1.2 : 0), spy.target.pos.z);
+    p.needsUpdate = true;
+  } else beam.visible = false;
+}
+
+function updateParticles(dt) {
+  for (const p of particles) {
+    if (!p.active) continue;
+    p.life += dt;
+    if (p.life >= p.max) { particles.free(p); continue; }
+    p.vel.y += p.grav * dt;
+    p.obj.position.addScaledVector(p.vel, dt);
+    const k = 1 - p.life / p.max;
+    p.obj.scale.setScalar(p.size * (0.4 + k * 0.8));
+    p.obj.material.opacity = k;
+  }
+}
+
+function updateAmbient(dt) {
+  const arr = ambientGeo.attributes.position.array;
+  for (let i = 0; i < AMBIENT_N; i++) {
+    arr[i * 3 + 1] += ambVel[i] * dt;
+    arr[i * 3] += Math.sin(elapsed + i) * dt * 0.4;
+    if (arr[i * 3 + 1] > 16) arr[i * 3 + 1] = 0;
+    if (arr[i * 3 + 1] < 0) arr[i * 3 + 1] = 16;
+  }
+  ambientGeo.attributes.position.needsUpdate = true;
+  for (const g of bigGears) g.rotation.z += g.userData.spin * dt;
+  pylons.forEach((p, i) => { p.userData.cap.material.emissiveIntensity = 1.6 + Math.sin(elapsed * 3 + i) * 0.8; });
+  edgeMat.emissiveIntensity = 1.4 + Math.sin(elapsed * 2) * 0.4;
+}
+
+const camPos = new THREE.Vector3(0, 14, 18);
+const camLook = new THREE.Vector3();
+function updateCamera(dt) {
+  let target, look;
+  const portrait = W < H;
+  if (state.mode === 'start' || state.mode === 'win') {
+    const a = elapsed * 0.15;
+    target = new THREE.Vector3(Math.sin(a) * 3, portrait ? 4.4 : 3.6, (portrait ? 15 : 10) + Math.cos(a) * 1.2);
+    look = new THREE.Vector3(0, portrait ? 1.2 : 0.9, 2.5);
+  } else {
+    const back = portrait ? 13.5 : 12.5, up = portrait ? 14 : 11;
+    target = new THREE.Vector3(player.pos.x * 0.85, up, player.pos.z * 0.85 + back);
+    look = new THREE.Vector3(player.pos.x * 0.9, 0.5, player.pos.z * 0.9 - (portrait ? 1 : 0.5));
+    if (state.boss && !state.boss.popping) {
+      // Pull back and aim between hero and boss so both stay on screen
+      const bp = state.boss.pos;
+      look.set((player.pos.x + bp.x) * 0.5, 1.2, (player.pos.z + bp.z) * 0.5);
+      target.set(look.x, up + 4, look.z + back + 4);
+    }
+  }
+  camPos.lerp(target, Math.min(1, dt * 4));
+  camLook.lerp(look, Math.min(1, dt * 5));
+  camera.position.copy(camPos);
+  // Screen shake
+  if (state.shake > 0) {
+    const s = Math.min(state.shake, 0.4) * 0.8;
+    camera.position.x += (Math.random() - 0.5) * s;
+    camera.position.y += (Math.random() - 0.5) * s;
+  }
+  camera.lookAt(camLook);
+}
+
+function easeOutBack(x) { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); }
+function easeInOut(x) { return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2; }
+
+// ---------------------------------------------------------------------------
+// HUD (2D canvas overlay)
+// ---------------------------------------------------------------------------
+const projV = new THREE.Vector3();
+function toScreen(pos) {
+  projV.copy(pos).project(camera);
+  return { x: (projV.x * 0.5 + 0.5) * W, y: (-projV.y * 0.5 + 0.5) * H, behind: projV.z > 1 };
+}
+
+function roundRect(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+}
+
+function outlinedText(g, text, x, y, size, fill, stroke = 'rgba(0,0,0,0.55)', align = 'center') {
+  g.font = '900 ' + size + 'px ' + FONT;
+  g.textAlign = align; g.textBaseline = 'middle';
+  g.lineJoin = 'round';
+  g.lineWidth = Math.max(3, size * 0.16);
+  g.strokeStyle = stroke; g.strokeText(text, x, y);
+  g.fillStyle = fill; g.fillText(text, x, y);
+}
+
+function drawHUD() {
+  const g = hud;
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  g.clearRect(0, 0, W, H);
+
+  // Flash overlays
+  if (state.flash > 0) { g.fillStyle = 'rgba(255,255,255,' + (state.flash * 1.2) + ')'; g.fillRect(0, 0, W, H); }
+  if (state.hurtFlash > 0) {
+    const gr = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.7);
+    gr.addColorStop(0, 'rgba(255,60,120,0)'); gr.addColorStop(1, 'rgba(255,60,120,' + state.hurtFlash + ')');
+    g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  }
+
+  if (state.mode === 'playing' || state.mode === 'card') drawGameHUD(g);
+  if (state.mode === 'card') drawLevelCard(g);
+  if (state.mode === 'start') drawStart(g);
+  if (state.mode === 'gameover' || state.mode === 'win') drawEnd(g);
+  drawMute(g);
+}
+
+function drawGameHUD(g) {
+  const s = Math.max(0.85, Math.min(1.2, Math.min(W, H) / 420));
+  // Floating +N texts
+  for (let i = floaters.length - 1; i >= 0; i--) {
+    const f = floaters[i];
+    f.t += frameDt;
+    if (f.t > 1.1) { floaters.splice(i, 1); continue; }
+    const p = toScreen(f.pos);
+    if (p.behind) continue;
+    const rise = f.t * 50;
+    g.globalAlpha = Math.min(1, (1.1 - f.t) * 2.5);
+    const sc = f.t < 0.15 ? 0.6 + f.t / 0.15 * 0.6 : 1.2 - Math.min(0.2, (f.t - 0.15));
+    outlinedText(g, f.text, p.x, p.y - rise, (f.big ? 26 : 20) * sc * s, f.color);
+    g.globalAlpha = 1;
+  }
+
+  // Spy speech bubble
+  if (spy.bubbleT > 0 && spy.bubble) {
+    const p = toScreen(spy.pos.clone().setY(spy.pos.y + 1.4));
+    if (!p.behind) {
+      g.font = '800 ' + Math.round(15 * s) + 'px ' + FONT;
+      const tw = g.measureText(spy.bubble).width + 22;
+      const bx = Math.max(8, Math.min(W - tw - 8, p.x - tw / 2)), by = Math.max(70, p.y - 44 * s);
+      g.globalAlpha = Math.min(1, spy.bubbleT * 3);
+      g.fillStyle = 'rgba(255,255,255,0.95)';
+      roundRect(g, bx, by, tw, 32 * s, 14); g.fill();
+      g.strokeStyle = '#21d4ff'; g.lineWidth = 3; g.stroke();
+      g.fillStyle = '#1e293b'; g.textAlign = 'left'; g.textBaseline = 'middle';
+      g.fillText(spy.bubble, bx + 11, by + 16 * s);
+      g.globalAlpha = 1;
+    }
+  }
+
+  // Boss health bar
+  if (state.boss && !state.boss.popping) {
+    const b = state.boss;
+    const bw = Math.min(W * 0.7, 360), bx = (W - bw) / 2, by = (W < 560 ? 140 : 98) * s;
+    outlinedText(g, 'MEGA GLITCH', W / 2, by - 14, 16 * s, '#f0abfc');
+    g.fillStyle = 'rgba(0,0,0,0.45)'; roundRect(g, bx, by, bw, 14, 7); g.fill();
+    g.fillStyle = b.element === 'hot' ? '#ff6a3d' : '#3dc2ff';
+    roundRect(g, bx + 2, by + 2, Math.max(0, (bw - 4) * b.hp / b.maxHp), 10, 5); g.fill();
+    outlinedText(g, b.element === 'hot' ? 'HOT core: use ICE' : 'COLD core: use FIRE', W / 2, by + 30, 14 * s, b.element === 'hot' ? '#ffd166' : '#c9f4ff');
+  }
+
+  // --- Top-left: lives + energy (right of mute button) ---
+  const lx = 70, ly = 22;
+  for (let i = 0; i < MAX_LIVES; i++) drawHeart(g, lx + i * 30 * s, ly + 12 * s, 12 * s, i < state.lives);
+  const ew = Math.min(150, W * 0.3) * s, ey = ly + 32 * s;
+  g.fillStyle = 'rgba(0,0,0,0.4)'; roundRect(g, lx - 12, ey, ew, 14 * s, 7); g.fill();
+  const ef = Math.max(0, state.energy / MAX_ENERGY);
+  g.fillStyle = ef > 0.5 ? '#39ff88' : ef > 0.25 ? '#ffd23f' : '#ff4d6d';
+  roundRect(g, lx - 10, ey + 2, Math.max(0, (ew - 4) * ef), 14 * s - 4, 5); g.fill();
+
+  // --- Top-right: score with pop ---
+  const pop = 1 + state.scorePop * 0.35;
+  g.save();
+  g.translate(W - 18, 30 * s);
+  g.scale(pop, pop);
+  outlinedText(g, String(Math.round(state.shownScore)), 0, 0, 30 * s, '#ffffff', theme.dark, 'right');
+  g.restore();
+  outlinedText(g, 'SCORE', W - 18, 56 * s, 12 * s, '#ffe14d', 'rgba(0,0,0,0.5)', 'right');
+
+  // --- Top center: level + progress ---
+  const L = LEVELS[state.level];
+  const narrow = W < 560;
+  const ly2 = narrow ? 30 * s : 0;
+  const pw = narrow ? Math.min(150, W * 0.36) : Math.min(170, W * 0.34);
+  const cx = narrow ? W - pw / 2 - 16 : W / 2;
+  outlinedText(g, 'LEVEL ' + (state.level + 1), narrow ? W / 2 : cx, 22 * s, 18 * s, '#ffffff', theme.dark);
+  const px = cx - pw / 2, py = 38 * s + ly2 + (narrow ? 26 * s : 0);
+  if (!state.bossSpawned) {
+    g.fillStyle = 'rgba(0,0,0,0.4)'; roundRect(g, px, py, pw, 12, 6); g.fill();
+    g.fillStyle = theme.primary; roundRect(g, px + 2, py + 2, Math.max(0, (pw - 4) * Math.min(1, state.fixed / L.goal)), 8, 4); g.fill();
+    outlinedText(g, 'Bots fixed ' + Math.min(state.fixed, L.goal) + '/' + L.goal, cx, py + 24, 12 * s, '#ffffff');
+  }
+
+  if (state.combo >= 3) outlinedText(g, 'COMBO x' + state.combo, cx, py + 44 * s, 16 * s, '#ff9ff3');
+
+  // --- Hero badge: shows who is active (Fire or Ice) ---
+  const hi = HERO_INFO[player.element];
+  const bx2 = 18, by2 = ey + 26 * s;
+  g.fillStyle = 'rgba(0,0,0,0.35)'; roundRect(g, bx2, by2, 118 * s, 26 * s, 13); g.fill();
+  g.fillStyle = hi.color; g.beginPath(); g.arc(bx2 + 13 * s, by2 + 13 * s, 9 * s, 0, Math.PI * 2); g.fill();
+  outlinedText(g, hi.name, bx2 + 28 * s, by2 + 13 * s, 14 * s, hi.light, 'rgba(0,0,0,0.5)', 'left');
+
+  if (state.mode === 'playing') drawControls(g, s);
+}
+
+function drawHeart(g, x, y, r, full) {
+  g.save(); g.translate(x, y);
+  g.beginPath();
+  g.moveTo(0, r * 0.9);
+  g.bezierCurveTo(-r * 1.6, -r * 0.2, -r * 0.7, -r * 1.3, 0, -r * 0.45);
+  g.bezierCurveTo(r * 0.7, -r * 1.3, r * 1.6, -r * 0.2, 0, r * 0.9);
+  g.fillStyle = full ? '#ff4d6d' : 'rgba(255,255,255,0.25)'; g.fill();
+  g.lineWidth = 2.5; g.strokeStyle = 'rgba(0,0,0,0.45)'; g.stroke();
+  g.restore();
+}
+
+function drawControls(g, s) {
+  // Joystick (ghost at home spot when idle, follows thumb when active)
+  const jx = joy.active ? joy.bx : joy.homeX, jy = joy.active ? joy.by : joy.homeY;
+  if (isTouch || joy.active) {
+    g.globalAlpha = joy.active ? 0.85 : 0.45;
+    g.fillStyle = 'rgba(255,255,255,0.18)';
+    g.beginPath(); g.arc(jx, jy, joy.r, 0, Math.PI * 2); g.fill();
+    g.lineWidth = 3; g.strokeStyle = 'rgba(255,255,255,0.6)'; g.stroke();
+    const kx = joy.active ? joy.x : jx, ky = joy.active ? joy.y : jy;
+    let dx = kx - jx, dy = ky - jy; const d = Math.hypot(dx, dy);
+    if (d > joy.r) { dx = dx / d * joy.r; dy = dy / d * joy.r; }
+    g.fillStyle = HERO_INFO[player.element].color;
+    g.beginPath(); g.arc(jx + dx, jy + dy, joy.r * 0.45, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = '#ffffff'; g.stroke();
+    g.globalAlpha = 1;
+  }
+  // Action buttons
+  const el = player.element;
+  const colors = {
+    attack: el === FIRE ? '#ff6a1a' : '#22b8f0',
+    special: state.special >= 100 ? '#ffd23f' : '#6b7280',
+    jump: '#39c96b',
+    swap: el === FIRE ? '#22b8f0' : '#ff6a1a',
+  };
+  for (const k in buttons) {
+    const b = buttons[k];
+    const sc = b.pressed ? 0.88 : 1;
+    const r = b.r * sc;
+    g.save(); g.translate(b.x, b.y);
+    // glow when special is ready
+    if (k === 'special' && state.special >= 100) {
+      g.fillStyle = 'rgba(255,210,63,' + (0.35 + Math.sin(elapsed * 8) * 0.2) + ')';
+      g.beginPath(); g.arc(0, 0, r * 1.35, 0, Math.PI * 2); g.fill();
+    }
+    g.globalAlpha = isTouch ? 0.9 : 0.75;
+    const gr = g.createLinearGradient(0, -r, 0, r);
+    gr.addColorStop(0, lighten(colors[k], b.pressed ? 0.5 : 0.25)); gr.addColorStop(1, colors[k]);
+    g.fillStyle = gr;
+    g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.fill();
+    g.lineWidth = 3.5; g.strokeStyle = 'rgba(255,255,255,0.85)'; g.stroke();
+    // Special charge meter ring
+    if (k === 'special') {
+      g.lineWidth = 5; g.strokeStyle = '#ffe14d';
+      g.beginPath(); g.arc(0, 0, r + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * state.special / 100); g.stroke();
+    }
+    // Attack charge ring
+    if (k === 'attack' && player.charging && player.charge > 0.12) {
+      g.lineWidth = 6; g.strokeStyle = player.charge >= 0.45 ? '#ffffff' : 'rgba(255,255,255,0.6)';
+      g.beginPath(); g.arc(0, 0, r + 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, player.charge / 0.45)); g.stroke();
+    }
+    g.globalAlpha = 1;
+    drawButtonIcon(g, k, r, el);
+    outlinedText(g, k === 'swap' ? (el === FIRE ? 'ICE' : 'FIRE') : b.label, 0, r * 0.62, Math.max(10, r * 0.26), '#ffffff', 'rgba(0,0,0,0.5)');
+    g.restore();
+  }
+  if (!isTouch) {
+    g.globalAlpha = 0.8;
+    outlinedText(g, 'WASD move  J attack (hold = charge)  K super  Space jump  L swap', W / 2, H - 16, 13, '#ffffff');
+    g.globalAlpha = 1;
+  }
+}
+
+function drawButtonIcon(g, k, r, el) {
+  g.save();
+  g.translate(0, -r * 0.12);
+  const u = r * 0.3;
+  g.fillStyle = '#ffffff'; g.strokeStyle = '#ffffff'; g.lineWidth = 3; g.lineCap = 'round'; g.lineJoin = 'round';
+  if (k === 'attack') {
+    if (el === FIRE) drawFlame(g, 0, 0, u * 1.2, '#fff3c4');
+    else drawSnow(g, 0, 0, u * 1.1);
+  } else if (k === 'special') {
+    // star burst
+    g.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = i / 10 * Math.PI * 2 - Math.PI / 2, rr = i % 2 ? u * 0.5 : u * 1.15;
+      g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+    }
+    g.closePath(); g.fill();
+  } else if (k === 'jump') {
+    g.beginPath(); g.moveTo(-u, u * 0.4); g.lineTo(0, -u * 0.7); g.lineTo(u, u * 0.4); g.lineWidth = 4.5; g.stroke();
+  } else if (k === 'swap') {
+    if (el === FIRE) drawSnow(g, 0, 0, u * 0.95); else drawFlame(g, 0, 0, u, '#fff3c4');
+  }
+  g.restore();
+}
+
+function drawFlame(g, x, y, s, col) {
+  g.save(); g.translate(x, y);
+  g.beginPath();
+  g.moveTo(0, -s * 1.3);
+  g.bezierCurveTo(s * 0.9, -s * 0.3, s * 0.9, s * 0.8, 0, s);
+  g.bezierCurveTo(-s * 0.9, s * 0.8, -s * 0.9, -s * 0.2, -s * 0.2, -s * 0.5);
+  g.bezierCurveTo(-s * 0.1, -s * 0.1, s * 0.1, -s * 0.6, 0, -s * 1.3);
+  g.fillStyle = col; g.fill();
+  g.restore();
+}
+function drawSnow(g, x, y, s) {
+  g.save(); g.translate(x, y); g.strokeStyle = '#ffffff'; g.lineWidth = 3.5; g.lineCap = 'round';
+  for (let i = 0; i < 3; i++) {
+    g.rotate(Math.PI / 3);
+    g.beginPath(); g.moveTo(-s, 0); g.lineTo(s, 0);
+    g.moveTo(s * 0.6, 0); g.lineTo(s * 0.85, -s * 0.25); g.moveTo(s * 0.6, 0); g.lineTo(s * 0.85, s * 0.25);
+    g.moveTo(-s * 0.6, 0); g.lineTo(-s * 0.85, -s * 0.25); g.moveTo(-s * 0.6, 0); g.lineTo(-s * 0.85, s * 0.25);
+    g.stroke();
+  }
+  g.restore();
+}
+
+function lighten(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, gg = (n >> 8) & 255, b = n & 255;
+  const f = v => Math.round(v + (255 - v) * amt);
+  return 'rgb(' + f(r) + ',' + f(gg) + ',' + f(b) + ')';
+}
+
+function drawMute(g) {
+  const b = muteBtn;
+  g.save(); g.translate(b.x, b.y);
+  g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.arc(0, 0, b.r, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = 'rgba(255,255,255,0.8)'; g.lineWidth = 2; g.stroke();
+  // speaker
+  g.fillStyle = '#ffffff';
+  g.beginPath(); g.moveTo(-10, -4); g.lineTo(-5, -4); g.lineTo(1, -10); g.lineTo(1, 10); g.lineTo(-5, 4); g.lineTo(-10, 4); g.closePath(); g.fill();
+  g.strokeStyle = '#ffffff'; g.lineWidth = 2.5; g.lineCap = 'round';
+  if (muted) {
+    g.beginPath(); g.moveTo(5, -5); g.lineTo(13, 5); g.moveTo(13, -5); g.lineTo(5, 5); g.stroke();
+  } else {
+    g.beginPath(); g.arc(3, 0, 6, -0.8, 0.8); g.stroke();
+    g.beginPath(); g.arc(3, 0, 11, -0.8, 0.8); g.stroke();
+  }
+  g.restore();
+}
+
+function panel(g, w, h, y) {
+  const x = (W - w) / 2;
+  g.save();
+  g.shadowColor = theme.glow; g.shadowBlur = 30;
+  g.globalAlpha = 0.9;
+  g.fillStyle = theme.surface;
+  roundRect(g, x, y, w, h, 24); g.fill();
+  g.restore();
+  g.lineWidth = 4; g.strokeStyle = theme.primary;
+  roundRect(g, x, y, w, h, 24); g.stroke();
+  return x;
+}
+
+function drawTitle(g, cx, cy, size) {
+  // "iSPY" with fire-to-ice gradient, gently floating
+  const float = Math.sin(elapsed * 2) * 6;
+  const pulse = 1 + Math.sin(elapsed * 3) * 0.03;
+  g.save(); g.translate(cx, cy + float); g.scale(pulse, pulse);
+  g.font = '900 ' + size + 'px ' + FONT;
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  const tw = g.measureText('iSPY').width;
+  const gr = g.createLinearGradient(-tw / 2, 0, tw / 2, 0);
+  gr.addColorStop(0, '#ff5a10'); gr.addColorStop(0.45, '#ffd23f'); gr.addColorStop(0.55, '#9fe8ff'); gr.addColorStop(1, '#2fb8ff');
+  g.lineJoin = 'round'; g.lineWidth = size * 0.14; g.strokeStyle = '#1b1446';
+  g.strokeText('iSPY', 0, 0);
+  g.fillStyle = gr; g.fillText('iSPY', 0, 0);
+  g.restore();
+}
+
+function drawStart(g) {
+  const s = Math.max(0.75, Math.min(1.25, Math.min(W, H * 0.85) / 430));
+  const t = Math.min(1, state.modeTime / 0.6);
+  const e = easeInOut(t);
+  g.globalAlpha = e;
+  drawTitle(g, W / 2, H * 0.14 + (1 - e) * -40, 76 * s);
+  outlinedText(g, 'FIRE & ICE ROBOT SQUAD', W / 2, H * 0.14 + 52 * s, 18 * s, '#ffffff', '#1b1446');
+
+  const pw = Math.min(W - 32, 430), ph = 146 * s, py = H - ph - 44 * s;
+  const px = panel(g, pw, ph, py);
+  const lines = [
+    ['#ff7a1a', 'BLAZE and FROST fix the Glitch Bots!'],
+    ['#22b8f0', 'Tap ATTACK. Hold it for a MEGA blast.'],
+    ['#ffd23f', 'SWAP heroes: ICE beats HOT, FIRE beats COLD.'],
+    ['#b56bff', 'Freeze a bot, then use FIRE = STEAM COMBO!'],
+    ['#39c96b', 'i-SPY the robot buddy helps you out.'],
+  ];
+  g.textAlign = 'left'; g.textBaseline = 'middle';
+  g.font = '800 ' + Math.round(13 * s) + 'px ' + FONT;
+  lines.forEach((ln, i) => {
+    const yy = py + 22 * s + i * 25.5 * s;
+    g.fillStyle = ln[0]; g.beginPath(); g.arc(px + 22, yy, 7 * s, 0, Math.PI * 2); g.fill();
+    g.fillStyle = theme.text; g.fillText(ln[1], px + 38, yy, pw - 52);
+  });
+  const blink = 0.6 + Math.sin(elapsed * 5) * 0.4;
+  g.globalAlpha = e * blink;
+  outlinedText(g, isTouch ? 'TAP TO START' : 'CLICK OR PRESS SPACE', W / 2, py - 24 * s, 24 * s, '#ffffff', theme.dark);
+  g.globalAlpha = e;
+  outlinedText(g, 'Made by Yoel, Ezekiel, Areli & Dada', W / 2, H - 20 * s, 13 * s, '#ffffff', 'rgba(0,0,0,0.6)');
+  g.globalAlpha = 1;
+}
+
+function drawLevelCard(g) {
+  const t = state.cardTimer;
+  const inT = Math.min(1, (2 - t) / 0.35), outT = Math.min(1, t / 0.3);
+  const a = Math.min(inT, outT);
+  const e = easeInOut(Math.max(0, a));
+  g.fillStyle = 'rgba(10,14,40,' + (0.45 * e) + ')'; g.fillRect(0, 0, W, H);
+  const s = Math.max(0.8, Math.min(1.3, Math.min(W, H) / 430));
+  g.globalAlpha = e;
+  g.save(); g.translate(W / 2, H * 0.42); g.scale(0.7 + e * 0.3, 0.7 + e * 0.3);
+  outlinedText(g, 'LEVEL ' + (state.level + 1), 0, 0, 64 * s, '#ffffff', theme.dark);
+  outlinedText(g, LEVELS[state.level].name, 0, 54 * s, 28 * s, '#ffe14d', theme.dark);
+  const tip = ['Fix ' + LEVELS[0].goal + ' Glitch Bots!', 'Watch out for zap drones!', 'Beat the MEGA GLITCH!'][state.level];
+  outlinedText(g, tip, 0, 94 * s, 18 * s, '#ffffff', 'rgba(0,0,0,0.6)');
+  g.restore();
+  g.globalAlpha = 1;
+}
+
+function drawEnd(g) {
+  const s = Math.max(0.8, Math.min(1.3, Math.min(W, H) / 430));
+  const e = easeInOut(Math.min(1, state.modeTime / 0.5));
+  g.fillStyle = 'rgba(10,14,40,' + 0.35 * e + ')'; g.fillRect(0, 0, W, H);
+  g.globalAlpha = e;
+  const won = state.mode === 'win';
+  const pw = Math.min(W - 32, 400), ph = 250 * s, py = (H - ph) / 2 + (1 - e) * 40;
+  panel(g, pw, ph, py);
+  outlinedText(g, won ? 'YOU WIN!' : 'GAME OVER', W / 2, py + 46 * s, 44 * s, won ? '#ffd23f' : theme.primary, theme.dark);
+  outlinedText(g, won ? 'Robot City is saved!' : 'The Glitch Bots got away!', W / 2, py + 88 * s, 17 * s, theme.text, 'rgba(255,255,255,0)');
+  outlinedText(g, 'SCORE', W / 2, py + 124 * s, 16 * s, theme.text, 'rgba(255,255,255,0)');
+  g.save(); g.translate(W / 2, py + 160 * s);
+  const pop = 1 + Math.sin(elapsed * 4) * 0.04;
+  g.scale(pop, pop);
+  outlinedText(g, String(state.score), 0, 0, 46 * s, '#ffe14d', theme.dark);
+  g.restore();
+  const blink = 0.6 + Math.sin(elapsed * 5) * 0.4;
+  g.globalAlpha = e * blink;
+  outlinedText(g, isTouch ? 'TAP TO PLAY AGAIN' : 'CLICK OR PRESS SPACE', W / 2, py + ph - 30 * s, 20 * s, theme.primary, 'rgba(255,255,255,0.8)');
+  g.globalAlpha = 1;
+}
+
+// ---------------------------------------------------------------------------
+// MAIN LOOP
+// ---------------------------------------------------------------------------
+let last = performance.now();
+let frameDt = 1 / 60;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  frameDt = dt;
+  update(dt);
+  renderer.render(scene, camera);
+  drawHUD();
+  requestAnimationFrame(frame);
+}
+
+resize();
+applyLevelLook(0);
+spySay('Hi! I\'m i-SPY!');
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

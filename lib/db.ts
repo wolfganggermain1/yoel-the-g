@@ -289,6 +289,14 @@ function initializeDb(): void {
     [{ devId: areliId, role: "lead" }]
   );
 
+  seedGame(
+    "iSPY", "ispy",
+    "3D Fire & Ice robot team! Swap heroes, freeze and melt Glitch Bots with robot buddy i-SPY, and beat the MEGA GLITCH!",
+    yoelId, "🤖", "/games/ispy/index.html", "arcade",
+    "1 Player", "Keyboard / Touch", ["Score", "Levels", "Sound", "3D", "Boss"],
+    [{ devId: yoelId, role: "lead" }, { devId: ezekielId, role: "co-author" }, { devId: areliId, role: "co-author" }]
+  );
+
   // ---- Migrate: consolidate Yoel's email to yoeltheg7@gmail.com ----
   const newYoel = d.prepare("SELECT id FROM users WHERE email = 'yoeltheg7@gmail.com'").get();
   if (newYoel) {
