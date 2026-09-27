@@ -345,6 +345,15 @@ function initializeDb(): void {
     [{ devId: dadaId, role: "lead" }]
   );
 
+  // --- Yoel, Dada & Areli ---
+  seedGame(
+    "Build an iPhone", "build-an-iphone",
+    "Build an iPhone 17 Pro part by part in 3D: the aluminium case, cameras, logic board, battery and ribbons. Tap any part to learn its name, then switch it on!",
+    yoelId, "\uD83D\uDCF1", "/games/build-an-iphone/index.html", "educational",
+    "1 Player", "Mouse / Touch", ["3D", "Build", "Learn the Parts", "Quiz", "Sound"],
+    [{ devId: yoelId, role: "lead" }, { devId: dadaId, role: "co-author" }, { devId: areliId, role: "co-author" }]
+  );
+
   // ---- Migrate: consolidate Yoel's email to yoeltheg7@gmail.com ----
   const newYoel = d.prepare("SELECT id FROM users WHERE email = 'yoeltheg7@gmail.com'").get();
   if (newYoel) {
