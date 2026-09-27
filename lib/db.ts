@@ -329,6 +329,14 @@ function initializeDb(): void {
   );
 
   seedGame(
+    "Sparkle Blast", "sparkle-blast",
+    "Drag shiny 3D gem blocks onto the board. Fill a row or column to make it BLAST, and keep blasting for combos!",
+    areliId, "\uD83D\uDC8E", "/games/sparkle-blast/index.html", "puzzle",
+    "1 Player", "Mouse / Touch", ["3D", "Combos", "Best Score", "Music"],
+    [{ devId: areliId, role: "lead" }]
+  );
+
+  seedGame(
     "iSPY", "ispy",
     "3D Fire & Ice robot team! Swap heroes, freeze and melt Glitch Bots with robot buddy i-SPY, and beat the MEGA GLITCH!",
     yoelId, "🤖", "/games/ispy/index.html", "arcade",
