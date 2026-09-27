@@ -1,5 +1,5 @@
 const CACHE_NAME = 'yoel-the-g-v5';
-const GAME_CACHE = 'yoel-games-v4';
+const GAME_CACHE = 'yoel-games-v5';
 const STATIC_CACHE = 'yoel-static-v4';
 
 const APP_SHELL = [
@@ -139,16 +139,21 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Game files: cache-first (pre-cached on install)
+  // Game files: stale-while-revalidate. The cached copy opens instantly (and offline),
+  // while a background fetch refreshes the cache so an updated game shows on the next visit.
   if (url.pathname.startsWith('/games/')) {
     event.respondWith(
       caches.open(GAME_CACHE).then((cache) =>
         cache.match(event.request).then((cached) => {
-          if (cached) return cached;
-          return fetch(event.request).then((response) => {
+          const network = fetch(event.request).then((response) => {
             if (response.ok) cache.put(event.request, response.clone());
             return response;
           });
+          if (cached) {
+            event.waitUntil(network.catch(() => {}));
+            return cached;
+          }
+          return network;
         })
       )
     );
