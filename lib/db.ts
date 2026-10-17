@@ -362,6 +362,14 @@ function initializeDb(): void {
     [{ devId: yoelId, role: "lead" }, { devId: dadaId, role: "co-author" }, { devId: areliId, role: "co-author" }]
   );
 
+  seedGame(
+    "Yoel's Scoop Shop", "scoop-shop",
+    "Run a realistic 3D ice cream shop! Open up in the morning, scoop and top every order in first-person, restock tubs, mop spills and close at night. Finish every job to earn the Gold Star. Works offline too!",
+    yoelId, "\uD83C\uDF66", "/games/scoop-shop/index.html", "creative",
+    "1 Player", "Mouse / Touch", ["3D", "Ice Cream", "Shop Manager", "5 Days", "Offline", "Sound"],
+    [{ devId: yoelId, role: "lead" }]
+  );
+
   // ---- Migrate: consolidate Yoel's email to yoeltheg7@gmail.com ----
   const newYoel = d.prepare("SELECT id FROM users WHERE email = 'yoeltheg7@gmail.com'").get();
   if (newYoel) {
