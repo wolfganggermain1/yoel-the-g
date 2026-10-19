@@ -1,5 +1,5 @@
-const CACHE_NAME = 'yoel-the-g-v6';
-const GAME_CACHE = 'yoel-games-v6';
+const CACHE_NAME = 'yoel-the-g-v7';
+const GAME_CACHE = 'yoel-games-v7';
 const STATIC_CACHE = 'yoel-static-v4';
 
 const APP_SHELL = [
