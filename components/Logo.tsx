@@ -1,4 +1,4 @@
-// The Yoël The G crayon logo. The art has a transparent background and a
+// The YTG crayon logo (sky, ropes and the YTG sticker). The art has a transparent background and a
 // white sticker outline, so it reads on all four themes without a backdrop.
 // AVIF first (about 1/3 the size of WebP for this texture), WebP as fallback.
 
@@ -22,8 +22,8 @@ export default function Logo({
         src="/brand/logo-480.webp"
         srcSet={srcSet("webp")}
         sizes={sizes}
-        width={1112}
-        height={991}
+        width={1220}
+        height={729}
         alt="Yoël The G"
         draggable={false}
         className={className}

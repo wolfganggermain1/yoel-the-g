@@ -23,7 +23,7 @@ export default function Navbar() {
           className="flex items-center touch-target rounded-xl"
           onClick={() => setMenuOpen(false)}
         >
-          <Logo sizes="68px" className="h-[52px] w-auto sm:h-[60px]" />
+          <Logo sizes="100px" className="h-[52px] w-auto sm:h-[60px]" />
         </Link>
 
         {/* Desktop nav items */}

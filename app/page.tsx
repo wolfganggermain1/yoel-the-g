@@ -80,8 +80,8 @@ export default async function HomePage() {
 
         <h1 className="relative hero-float">
           <Logo
-            sizes="(min-width: 1024px) 440px, (min-width: 768px) 400px, (min-width: 640px) 340px, 250px"
-            className="w-[250px] h-auto max-h-[60vh] object-contain sm:w-[340px] md:w-[400px] lg:w-[440px] drop-shadow-xl"
+            sizes="(min-width: 1024px) 540px, (min-width: 768px) 500px, (min-width: 640px) 420px, 300px"
+            className="w-[300px] h-auto max-h-[60vh] object-contain sm:w-[420px] md:w-[500px] lg:w-[540px] drop-shadow-xl"
           />
         </h1>
 

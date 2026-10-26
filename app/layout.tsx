@@ -19,8 +19,8 @@ export const metadata: Metadata = {
   description:
     "A fun, colorful family gaming platform for kids ages 3+. Play games, earn XP, and level up!",
   manifest: "/manifest.json",
-  // Tab favicons use the egg + controller mark (the full logo is unreadable
-  // at 16-48px); home-screen and PWA icons use the full logo.
+  // Tab favicons and home-screen/PWA icons use the YTG sticker mark; the full
+  // logo is too wide to read at icon sizes.
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "16x16 32x32 48x48" },
