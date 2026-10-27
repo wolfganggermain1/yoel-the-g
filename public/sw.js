@@ -1,5 +1,5 @@
-const CACHE_NAME = 'yoel-the-g-v8';
-const GAME_CACHE = 'yoel-games-v7';
+const CACHE_NAME = 'yoel-the-g-v9';
+const GAME_CACHE = 'yoel-games-v8';
 const STATIC_CACHE = 'yoel-static-v4';
 
 const APP_SHELL = [
@@ -23,6 +23,7 @@ const GAME_FILES = [
   '/games/loti-it0/index.html',
   '/games/loto/index.html',
   '/games/pilot-tollt/index.html',
+  '/games/quest-islands/index.html',
   '/games/remember-family/index.html',
   '/games/robot-battle/index.html',
   '/games/scoop-shop/index.html',
@@ -44,6 +45,7 @@ const PLAY_PAGES = [
   '/play/loti-it0',
   '/play/loto',
   '/play/pilot-tollt',
+  '/play/quest-islands',
   '/play/remember-family',
   '/play/robot-battle',
   '/play/scoop-shop',

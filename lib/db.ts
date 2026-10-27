@@ -370,6 +370,14 @@ function initializeDb(): void {
     [{ devId: yoelId, role: "lead" }]
   );
 
+  seedGame(
+    "Quest Islands", "quest-islands",
+    "Revise on six islands! Year 4 maths with the real booklet questions, Year 3 and 4 science, Year 4 reading, French CP phonics and science posters. Earn up to 3 stars per island. Works offline too!",
+    areliId, "🏝️", "/games/quest-islands/index.html", "educational",
+    "1 Player", "Mouse / Touch", ["Maths", "Science", "Reading", "French", "Read Aloud", "Offline"],
+    [{ devId: areliId, role: "lead" }]
+  );
+
   // ---- Migrate: consolidate Yoel's email to yoeltheg7@gmail.com ----
   const newYoel = d.prepare("SELECT id FROM users WHERE email = 'yoeltheg7@gmail.com'").get();
   if (newYoel) {
