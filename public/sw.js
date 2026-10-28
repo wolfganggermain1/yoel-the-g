@@ -1,5 +1,5 @@
-const CACHE_NAME = 'yoel-the-g-v9';
-const GAME_CACHE = 'yoel-games-v8';
+const CACHE_NAME = 'yoel-the-g-v10';
+const GAME_CACHE = 'yoel-games-v9';
 const STATIC_CACHE = 'yoel-static-v4';
 
 const APP_SHELL = [
@@ -29,6 +29,7 @@ const GAME_FILES = [
   '/games/scoop-shop/index.html',
   '/games/simon-says/index.html',
   '/games/skate-park/index.html',
+  '/games/sky-hangar/index.html',
   '/games/sky-battle/index.html',
   '/games/sparkle-shop/index.html',
 ];
@@ -51,6 +52,7 @@ const PLAY_PAGES = [
   '/play/scoop-shop',
   '/play/simon-says',
   '/play/skate-park',
+  '/play/sky-hangar',
   '/play/sky-battle',
   '/play/sparkle-shop',
 ];

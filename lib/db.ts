@@ -378,6 +378,15 @@ function initializeDb(): void {
     [{ devId: areliId, role: "lead" }]
   );
 
+  // --- Yoel, Areli & Ezekiel ---
+  seedGame(
+    "Sky Hangar", "sky-hangar",
+    "Take a real Piper Super Cub, F-16 and Boeing 737 apart in 3D and learn every part, then fly them! Start at Flight School, earn your licence, save up to own your own plane. Easy or Challenge. Works offline too!",
+    yoelId, "\u2708\uFE0F", "/games/sky-hangar/index.html", "educational",
+    "1 Player", "Keyboard / Touch", ["3D", "Build", "Flight School", "3 Planes", "Easy / Challenge", "Offline", "Sound"],
+    [{ devId: yoelId, role: "lead" }, { devId: areliId, role: "co-author" }, { devId: ezekielId, role: "co-author" }]
+  );
+
   // ---- Migrate: consolidate Yoel's email to yoeltheg7@gmail.com ----
   const newYoel = d.prepare("SELECT id FROM users WHERE email = 'yoeltheg7@gmail.com'").get();
   if (newYoel) {
