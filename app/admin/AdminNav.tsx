@@ -7,9 +7,11 @@ import { useAuth } from '@/components/AdminGuard';
 const NAV_ITEMS = [
   { href: '/admin', label: 'Dashboard', icon: '\u{1F4CA}', minRole: 'outside_dev' },
   { href: '/admin/games', label: 'Games', icon: '\u{1F3AE}', minRole: 'family_dev' },
+  { href: '/admin/ideas', label: 'Game Ideas', icon: '\u{1F4A1}', minRole: 'family_dev' },
   { href: '/admin/tube', label: 'Tube Videos', icon: '\u{1F4FA}', minRole: 'admin' },
   { href: '/admin/developers', label: 'Developers', icon: '\u{1F468}\u{200D}\u{1F4BB}', minRole: 'admin' },
   { href: '/admin/users', label: 'Users', icon: '\u{1F465}', minRole: 'admin' },
+  { href: '/admin/settings', label: 'Settings', icon: '\u{2699}\u{FE0F}', minRole: 'super_admin' },
 ];
 
 const ROLE_HIERARCHY: Record<string, number> = {

@@ -5,10 +5,14 @@ import { requireMinRole, type JwtPayload } from '@/lib/auth';
 import {
   addGame,
   addGameDeveloper,
+  addGameIdea,
   addGeneration,
   countGenerationsLastDay,
   getGameBySlug,
+  getGameIdea,
+  markGameIdeaMade,
 } from '@/lib/db';
+import { getAnthropicKey } from '@/lib/anthropic-key';
 import { generateGamePrompt, type GameTemplateConfig } from '@/lib/game-template';
 import { scanGameHtml, slugify } from '@/lib/game-scan';
 import { generatedGameDir, generatedGameFile, generatedGamePath } from '@/lib/generated-games';
@@ -156,12 +160,13 @@ async function streamMessage(
  * Ask the model for the game; one automatic fix round if the scanner rejects it.
  */
 async function produceHtml(
+  apiKey: string,
   model: string,
   config: GameTemplateConfig,
   usage: { input: number; output: number },
   send: (event: StreamEvent) => void,
 ): Promise<string> {
-  const client = new Anthropic();
+  const client = new Anthropic({ apiKey });
   const messages: Anthropic.Beta.BetaMessageParam[] = [
     { role: 'user', content: generateGamePrompt(config) },
   ];
@@ -213,6 +218,8 @@ async function generate(
   user: JwtPayload,
   config: GameTemplateConfig,
   developerId: number,
+  ideaId: number,
+  apiKey: string,
   model: string,
   send: (event: StreamEvent) => void,
 ) {
@@ -220,7 +227,7 @@ async function generate(
   const usage = { input: 0, output: 0 };
 
   try {
-    const html = await produceHtml(model, config, usage, send);
+    const html = await produceHtml(apiKey, model, config, usage, send);
 
     send({ type: 'status', message: 'Saving your game...' });
     const slug = uniqueSlug(config.title);
@@ -240,6 +247,7 @@ async function generate(
     });
     const gameId = Number(result.lastInsertRowid);
     addGameDeveloper(gameId, developerId, 'lead');
+    markGameIdeaMade(ideaId, gameId);
 
     const costCents = estimateCostCents(model, usage.input, usage.output);
     addGeneration({
@@ -280,40 +288,67 @@ async function generate(
 
 /**
  * POST /api/generate
- * Generate a game from a wizard config and save it as an unpublished draft.
- * Body: { config: GameTemplateConfig, developerId?: number (admins only) }
- * Streams newline-delimited JSON events: status, progress, done, error.
+ * Save a wizard idea and, when a Claude API key is set, generate the game as an
+ * unpublished draft. Without a key the idea is only saved (Admin → Game Ideas).
+ * Body: { config } for a new idea, or { ideaId } to make a saved idea;
+ *       developerId (admins only) credits a developer when the account has none.
+ * Returns JSON { saved: true, ideaId } when no key is set; otherwise streams
+ * newline-delimited JSON events: status, progress, done, error.
  */
 export async function POST(request: NextRequest) {
   const user = await requireMinRole('family_dev');
   if (!user) {
     return NextResponse.json({ error: 'Please log in at /admin first.' }, { status: 401 });
   }
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json(
-      { error: 'The game maker is not set up yet (ANTHROPIC_API_KEY is missing).' },
-      { status: 503 },
-    );
-  }
 
-  let body: { config?: unknown; developerId?: unknown };
+  let body: { config?: unknown; developerId?: unknown; ideaId?: unknown };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
   }
 
-  const config = parseConfig(body.config);
+  const isAdmin = user.role === 'admin' || user.role === 'super_admin';
+  const adminPick = isAdmin && typeof body.developerId === 'number' ? body.developerId : null;
+
+  let config: GameTemplateConfig | null;
+  let developerId: number | null;
+  let ideaId: number;
+
+  if (typeof body.ideaId === 'number') {
+    const idea = getGameIdea(body.ideaId);
+    if (!idea || (!isAdmin && idea.user_id !== user.userId)) {
+      return NextResponse.json({ error: 'Idea not found' }, { status: 404 });
+    }
+    if (idea.game_id) {
+      return NextResponse.json({ error: 'This idea has already been made into a game.' }, { status: 409 });
+    }
+    config = parseConfig(JSON.parse(idea.config));
+    developerId = idea.developer_id ?? user.developerId ?? adminPick;
+    ideaId = idea.id;
+  } else {
+    config = parseConfig(body.config);
+    developerId = user.developerId ?? adminPick;
+    if (config) ideaId = addGameIdea(user.userId, developerId, config.title, config);
+    else ideaId = 0;
+  }
+
   if (!config) {
     return NextResponse.json({ error: 'Title and difficulty are required' }, { status: 400 });
   }
 
-  const isAdmin = user.role === 'admin' || user.role === 'super_admin';
-  const developerId =
-    user.developerId ?? (isAdmin && typeof body.developerId === 'number' ? body.developerId : null);
+  const apiKey = getAnthropicKey();
+  if (!apiKey) {
+    return NextResponse.json({
+      saved: true,
+      ideaId,
+      message: 'Your idea is saved! The game maker is not switched on yet, so it will be built later.',
+    });
+  }
+
   if (!developerId) {
     return NextResponse.json(
-      { error: 'Your account is not linked to a developer profile yet. Ask an admin to link it.' },
+      { error: 'Your idea is saved, but your account is not linked to a developer profile yet. Ask an admin to link it.' },
       { status: 400 },
     );
   }
@@ -321,7 +356,7 @@ export async function POST(request: NextRequest) {
   const dailyLimit = Number(process.env.GENERATOR_DAILY_LIMIT) || DEFAULT_DAILY_LIMIT;
   if (countGenerationsLastDay(user.userId) >= dailyLimit) {
     return NextResponse.json(
-      { error: `You've used all ${dailyLimit} games for today. Come back tomorrow!` },
+      { error: `Your idea is saved, but you've used all ${dailyLimit} games for today. Come back tomorrow!` },
       { status: 429 },
     );
   }
@@ -334,7 +369,7 @@ export async function POST(request: NextRequest) {
         controller.enqueue(encoder.encode(JSON.stringify(event) + '\n'));
       };
       try {
-        await generate(user, config, developerId, model, send);
+        await generate(user, config, developerId, ideaId, apiKey.key, model, send);
       } finally {
         controller.close();
       }

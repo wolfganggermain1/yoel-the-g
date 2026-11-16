@@ -18,6 +18,17 @@ prompt the developer had to paste into Claude themselves. They now also have a
 The response is a newline-delimited JSON stream (`status`, `progress`, `done`, `error`) so the
 page can show progress during the 1–3 minute generation and proxies don't time out.
 
+## Game ideas and the API key
+
+Every **Make my game!** click first saves the wizard answers in `game_ideas`
+(**Admin → Game Ideas**). With no Claude API key the request stops there and the developer sees
+"Your idea is saved!". Once a key is set, each saved idea gets a **Make this game** button
+(`POST /api/generate` with `{ ideaId }`), and the idea links to the draft it became.
+
+The key is set live by a super admin in **Admin → Settings**: it is checked against Anthropic
+(a free models list call), stored in the `settings` table, and never sent back to the browser
+(only its last 4 characters). An `ANTHROPIC_API_KEY` env var, if set, takes precedence.
+
 ## Storage
 
 `public/games/` is baked into the Docker image and wiped on every deploy, so generated games
@@ -28,7 +39,7 @@ live under `data/` (the persistent volume) and are served by `GET /api/generated
 
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | yes (for generation only) | — | Claude API key. Without it the button returns "not set up yet"; the rest of the site is unaffected. |
+| `ANTHROPIC_API_KEY` | no | — | Claude API key. Optional: a super admin can set it in Admin → Settings instead. Without either, ideas are only saved. |
 | `GENERATOR_MODEL` | no | `claude-opus-5-5` | `claude-sonnet-5-5` is about half the cost per game. |
 | `GENERATOR_DAILY_LIMIT` | no | `5` | Generations per account per rolling 24 h, failed attempts included. |
 

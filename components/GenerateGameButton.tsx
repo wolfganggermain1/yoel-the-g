@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { GameTemplateConfig } from '@/lib/game-template';
 
-type Phase = 'idle' | 'running' | 'done' | 'error';
+type Phase = 'idle' | 'running' | 'done' | 'saved' | 'error';
 
 interface DoneEvent {
   slug: string;
@@ -19,15 +19,24 @@ type StreamEvent =
   | { type: 'error'; message: string };
 
 /**
- * "Make my game!" panel shown under a generated prompt. Calls /api/generate
- * and follows its newline-delimited JSON stream until the draft is saved.
+ * "Make my game!" panel shown under a generated prompt (pass config) or on a
+ * saved idea (pass ideaId). Calls /api/generate; when the game maker has no
+ * API key yet the idea is only saved, otherwise it follows the
+ * newline-delimited JSON stream until the draft is saved.
  */
-export default function GenerateGameButton({ config }: { config: GameTemplateConfig }) {
+export default function GenerateGameButton({
+  config,
+  ideaId,
+}: {
+  config?: GameTemplateConfig;
+  ideaId?: number;
+}) {
   const [phase, setPhase] = useState<Phase>('idle');
   const [status, setStatus] = useState('');
   const [chars, setChars] = useState(0);
   const [result, setResult] = useState<DoneEvent | null>(null);
   const [error, setError] = useState('');
+  const [savedMessage, setSavedMessage] = useState('');
 
   async function run() {
     setPhase('running');
@@ -58,10 +67,16 @@ export default function GenerateGameButton({ config }: { config: GameTemplateCon
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config }),
+        body: JSON.stringify(ideaId ? { ideaId } : { config }),
       });
-      if (!res.ok || !res.body) {
+      const isJson = res.headers.get('content-type')?.includes('application/json');
+      if (!res.ok || !res.body || isJson) {
         const data = await res.json().catch(() => ({}));
+        if (res.ok && data.saved) {
+          setSavedMessage(data.message);
+          setPhase('saved');
+          return;
+        }
         throw new Error(data.error || `Request failed (${res.status})`);
       }
 
@@ -94,7 +109,7 @@ export default function GenerateGameButton({ config }: { config: GameTemplateCon
       style={{ border: '2px solid var(--primary)', background: 'var(--surface)' }}
     >
       <h4 className="font-fredoka font-semibold text-lg mb-1" style={{ color: 'var(--text)' }}>
-        {'✨'} Or let YTG build it for you
+        {'✨'} {ideaId ? 'Build this game' : 'Or let YTG build it for you'}
       </h4>
       <p className="text-sm opacity-60 mb-3" style={{ color: 'var(--text)' }}>
         Takes 1-3 minutes. Your game lands in Admin as a draft, and an admin publishes it.
@@ -120,6 +135,12 @@ export default function GenerateGameButton({ config }: { config: GameTemplateCon
           )}
           <p className="opacity-60 mt-2">Keep this page open.</p>
         </div>
+      )}
+
+      {phase === 'saved' && (
+        <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+          {'\u{1F4A1}'} {savedMessage}
+        </p>
       )}
 
       {phase === 'done' && result && (
