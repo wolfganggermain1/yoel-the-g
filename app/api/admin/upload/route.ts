@@ -4,6 +4,7 @@ import path from 'path';
 import AdmZip from 'adm-zip';
 import { requireMinRole } from '@/lib/auth';
 import { addGame } from '@/lib/db';
+import { DANGEROUS_PATTERNS, slugify } from '@/lib/game-scan';
 
 const MAX_HTML_SIZE = 5 * 1024 * 1024;   // 5 MB for single HTML
 const MAX_ZIP_SIZE = 25 * 1024 * 1024;    // 25 MB for ZIP
@@ -13,26 +14,6 @@ const BLOCKED_EXTENSIONS = new Set([
   '.exe', '.bat', '.cmd', '.sh', '.ps1', '.msi', '.dll',
   '.com', '.scr', '.pif', '.vbs', '.vbe', '.wsf', '.wsh',
 ]);
-
-// Dangerous patterns scanned in HTML/JS content
-const DANGEROUS_PATTERNS = [
-  /\beval\s*\(/gi,
-  /\bnew\s+Function\s*\(/gi,
-  /\bdocument\.cookie\b/gi,
-  /\bfetch\s*\(\s*['"`]https?:\/\//gi,
-  /\bXMLHttpRequest\b/gi,
-  /\bimport\s*\(\s*['"`]https?:\/\//gi,
-  /\bnavigator\.sendBeacon\s*\(\s*['"`]https?:\/\//gi,
-];
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-}
 
 /**
  * Validate a ZIP file for security and structure requirements.

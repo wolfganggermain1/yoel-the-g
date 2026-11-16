@@ -5,6 +5,7 @@ import {
   generateGamePrompt,
   type GameTemplateConfig,
 } from '@/lib/game-template';
+import GenerateGameButton from '@/components/GenerateGameButton';
 
 type Difficulty = GameTemplateConfig['difficulty'];
 
@@ -48,6 +49,7 @@ export default function GameCreator() {
   const [title, setTitle] = useState('');
   const [devName, setDevName] = useState('');
   const [generatedPrompt, setGeneratedPrompt] = useState('');
+  const [generatedConfig, setGeneratedConfig] = useState<GameTemplateConfig | null>(null);
   const [copied, setCopied] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const promptRef = useRef<HTMLPreElement>(null);
@@ -83,7 +85,7 @@ export default function GameCreator() {
     const detectedType = KNOWN_GAME_TYPES.find((t) => descLower.includes(t));
     const detectedTheme = KNOWN_THEMES.find((t) => descLower.includes(t));
 
-    const prompt = generateGamePrompt({
+    const config: GameTemplateConfig = {
       gameType: detectedType,
       theme: detectedTheme,
       difficulty,
@@ -91,8 +93,9 @@ export default function GameCreator() {
       title: title.trim(),
       description: description.trim(),
       developerName: devName.trim() || 'Game Developer',
-    });
-    setGeneratedPrompt(prompt);
+    };
+    setGeneratedConfig(config);
+    setGeneratedPrompt(generateGamePrompt(config));
     setStep(4);
   }
 
@@ -119,6 +122,7 @@ export default function GameCreator() {
     setTitle('');
     setDevName('');
     setGeneratedPrompt('');
+    setGeneratedConfig(null);
     setCopied(false);
   }
 
@@ -393,6 +397,8 @@ export default function GameCreator() {
               Copy this prompt and paste it into Claude, ChatGPT, or any AI to create your game.
               Save the HTML file it generates and upload it via Admin.
             </p>
+
+            {generatedConfig && <GenerateGameButton config={generatedConfig} />}
 
             {/* Prompt display */}
             <div

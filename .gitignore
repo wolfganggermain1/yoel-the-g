@@ -31,3 +31,6 @@ next-env.d.ts
 data/*.db
 data/*.db-wal
 data/*.db-shm
+
+# AI-generated games are runtime data (served from the data volume)
+data/generated/

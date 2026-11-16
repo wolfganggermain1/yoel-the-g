@@ -145,6 +145,43 @@ function initializeDb(): void {
     for (const v of [...STARTER_TUBE_VIDEOS].reverse()) insertVideo.run(...v);
   }
 
+  // ---- Site settings (e.g. the Claude API key set from Admin → Settings) ----
+  // ---- Game ideas: every "Make my game!" wizard submission is kept here ----
+  d.exec(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS game_ideas (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      developer_id INTEGER REFERENCES developers(id) ON DELETE SET NULL,
+      title TEXT NOT NULL,
+      config TEXT NOT NULL,
+      game_id INTEGER REFERENCES games(id) ON DELETE SET NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  // ---- AI game generator log (one row per attempt, used for the daily cap) ----
+  d.exec(`
+    CREATE TABLE IF NOT EXISTS generations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      game_id INTEGER REFERENCES games(id) ON DELETE SET NULL,
+      model TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('ok', 'failed')),
+      input_tokens INTEGER DEFAULT 0,
+      output_tokens INTEGER DEFAULT 0,
+      cost_cents INTEGER,
+      error TEXT,
+      duration_ms INTEGER,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
   // ---- Seed developers (idempotent) ----
   const insertDev = d.prepare(`
     INSERT OR IGNORE INTO developers (name, slug, avatar_emoji, approved)
@@ -631,6 +668,131 @@ export function getGameBySlug(slug: string): Game | undefined {
   return getDb()
     .prepare("SELECT * FROM games WHERE slug = ?")
     .get(slug) as Game | undefined;
+}
+
+// ---------------------------------------------------------------------------
+// AI generator log
+// ---------------------------------------------------------------------------
+
+export interface AddGenerationData {
+  user_id: number;
+  game_id: number | null;
+  model: string;
+  status: "ok" | "failed";
+  input_tokens: number;
+  output_tokens: number;
+  cost_cents: number | null;
+  error?: string | null;
+  duration_ms: number;
+}
+
+export function addGeneration(data: AddGenerationData): Database.RunResult {
+  return getDb()
+    .prepare(
+      `INSERT INTO generations
+        (user_id, game_id, model, status, input_tokens, output_tokens, cost_cents, error, duration_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      data.user_id,
+      data.game_id,
+      data.model,
+      data.status,
+      data.input_tokens,
+      data.output_tokens,
+      data.cost_cents,
+      data.error ?? null,
+      data.duration_ms
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+
+export function getSetting(key: string): string | null {
+  const row = getDb().prepare('SELECT value FROM settings WHERE key = ?').get(key) as
+    | { value: string }
+    | undefined;
+  return row?.value ?? null;
+}
+
+export function setSetting(key: string, value: string): void {
+  getDb()
+    .prepare(
+      `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+    )
+    .run(key, value);
+}
+
+export function deleteSetting(key: string): void {
+  getDb().prepare('DELETE FROM settings WHERE key = ?').run(key);
+}
+
+// ---------------------------------------------------------------------------
+// Game ideas
+// ---------------------------------------------------------------------------
+
+export interface GameIdea {
+  id: number;
+  user_id: number | null;
+  developer_id: number | null;
+  title: string;
+  config: string; // JSON GameTemplateConfig
+  game_id: number | null;
+  created_at: string;
+  user_name?: string | null;
+  developer_name?: string | null;
+  game_slug?: string | null;
+}
+
+export function addGameIdea(
+  userId: number,
+  developerId: number | null,
+  title: string,
+  config: unknown,
+): number {
+  const result = getDb()
+    .prepare('INSERT INTO game_ideas (user_id, developer_id, title, config) VALUES (?, ?, ?, ?)')
+    .run(userId, developerId, title, JSON.stringify(config));
+  return Number(result.lastInsertRowid);
+}
+
+export function getGameIdea(id: number): GameIdea | undefined {
+  return getDb().prepare('SELECT * FROM game_ideas WHERE id = ?').get(id) as GameIdea | undefined;
+}
+
+/** All ideas, newest first; pass a userId to list only that account's ideas. */
+export function listGameIdeas(userId?: number): GameIdea[] {
+  return getDb()
+    .prepare(
+      `SELECT i.*, u.display_name AS user_name, d.name AS developer_name, g.slug AS game_slug
+       FROM game_ideas i
+       LEFT JOIN users u ON u.id = i.user_id
+       LEFT JOIN developers d ON d.id = i.developer_id
+       LEFT JOIN games g ON g.id = i.game_id
+       ${userId === undefined ? '' : 'WHERE i.user_id = ?'}
+       ORDER BY i.id DESC`
+    )
+    .all(...(userId === undefined ? [] : [userId])) as GameIdea[];
+}
+
+export function markGameIdeaMade(id: number, gameId: number): void {
+  getDb().prepare('UPDATE game_ideas SET game_id = ? WHERE id = ?').run(gameId, id);
+}
+
+export function deleteGameIdea(id: number): void {
+  getDb().prepare('DELETE FROM game_ideas WHERE id = ?').run(id);
+}
+
+export function countGenerationsLastDay(userId: number): number {
+  const row = getDb()
+    .prepare(
+      "SELECT COUNT(*) as count FROM generations WHERE user_id = ? AND created_at >= datetime('now', '-1 day')"
+    )
+    .get(userId) as { count: number };
+  return row.count;
 }
 
 export function addGame(data: AddGameData): Database.RunResult {
