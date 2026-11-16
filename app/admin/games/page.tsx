@@ -37,7 +37,6 @@ const CATEGORIES = [
 
 export default function AdminGamesPage() {
   const { user } = useAuth();
-  const isSuperAdmin = user?.role === 'super_admin';
   const isAdminOrAbove = user?.role === 'super_admin' || user?.role === 'admin';
 
   const [games, setGames] = useState<Game[]>([]);
@@ -522,8 +521,8 @@ export default function AdminGamesPage() {
                   >
                     {'\u{270F}\u{FE0F}'}
                   </button>
-                  {/* Toggle publish - super_admin only */}
-                  {isSuperAdmin && (
+                  {/* Toggle publish - admin and above */}
+                  {isAdminOrAbove && (
                     <button
                       onClick={() => handleTogglePublish(game.id)}
                       className="p-2 rounded-lg text-sm hover:opacity-80 transition-opacity cursor-pointer"

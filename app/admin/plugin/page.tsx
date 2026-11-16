@@ -5,6 +5,7 @@ import {
   generateGamePrompt,
   type GameTemplateConfig,
 } from '@/lib/game-template';
+import GenerateGameButton from '@/components/GenerateGameButton';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -80,6 +81,7 @@ export default function PluginWizardPage() {
 
   // Prompt output
   const [generatedPrompt, setGeneratedPrompt] = useState('');
+  const [generatedConfig, setGeneratedConfig] = useState<GameTemplateConfig | null>(null);
   const [copied, setCopied] = useState(false);
   const promptRef = useRef<HTMLPreElement>(null);
 
@@ -122,6 +124,7 @@ export default function PluginWizardPage() {
         description: '',
         developerName: developerName.trim(),
       };
+      setGeneratedConfig(config);
       setGeneratedPrompt(generateGamePrompt(config));
     }
 
@@ -143,6 +146,7 @@ export default function PluginWizardPage() {
     setTitle('');
     setDeveloperName('');
     setGeneratedPrompt('');
+    setGeneratedConfig(null);
     setCopied(false);
   }
 
@@ -508,6 +512,8 @@ export default function PluginWizardPage() {
             >
               {copied ? '\u2705  Copied!' : '\u{1F4CB}  Copy to Clipboard'}
             </button>
+
+            {generatedConfig && <GenerateGameButton config={generatedConfig} />}
 
             {/* Prompt code block */}
             <div

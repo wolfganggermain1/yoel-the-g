@@ -4,6 +4,7 @@ import path from 'path';
 import { getCurrentUser, requireMinRole } from '@/lib/auth';
 import { getDb, toggleGamePublished, updateGame, getGameById, getUserByDeveloperId } from '@/lib/db';
 import { sendGamePublishedEmail, sendGameUnpublishedEmail } from '@/lib/email';
+import { generatedGameFile, isGeneratedGamePath } from '@/lib/generated-games';
 
 interface GameWithDev {
   id: number;
@@ -62,9 +63,9 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (action === 'toggle') {
-      if (user.role !== 'super_admin') {
+      if (user.role !== 'super_admin' && user.role !== 'admin') {
         return NextResponse.json(
-          { error: 'Only super_admin can publish or unpublish games' },
+          { error: 'Only admins can publish or unpublish games' },
           { status: 403 },
         );
       }
@@ -172,9 +173,11 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: 'File size must be under 5 MB' }, { status: 400 });
       }
 
-      // Write file to existing game path
+      // Write file to existing game path (generated games live under data/)
       const gamePath = game.game_path;
-      const fullPath = path.join(process.cwd(), 'public', gamePath);
+      const fullPath = isGeneratedGamePath(gamePath)
+        ? generatedGameFile(game.slug)
+        : path.join(process.cwd(), 'public', gamePath);
       const dir = path.dirname(fullPath);
       await mkdir(dir, { recursive: true });
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireRole, hashPassword } from '@/lib/auth';
+import { randomBytes } from 'crypto';
+import { requireMinRole, hashPassword } from '@/lib/auth';
 import {
   getAllUsers,
   createUser,
@@ -11,12 +12,17 @@ import {
 } from '@/lib/db';
 import { sendWelcomeEmail, sendPasswordResetEmail, sendRoleUpdatedEmail } from '@/lib/email';
 
+/** One-time password for new and reset accounts; the user must change it on first login. */
+function makeTempPassword(): string {
+  return randomBytes(9).toString('base64url');
+}
+
 /**
  * GET /api/admin/users
- * List all users. Super admin only.
+ * List all users. Admin and above.
  */
 export async function GET() {
-  const user = await requireRole('super_admin');
+  const user = await requireMinRole('admin');
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
@@ -28,11 +34,11 @@ export async function GET() {
 
 /**
  * POST /api/admin/users
- * Create a new user. Super admin only.
+ * Create a new user. Admin and above; only a super admin can create super admins.
  * Body: { email, displayName, role, developerId?, isFamily? }
  */
 export async function POST(request: NextRequest) {
-  const currentUser = await requireRole('super_admin');
+  const currentUser = await requireMinRole('admin');
   if (!currentUser) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
@@ -62,19 +68,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const defaultHash = await hashPassword('changeme123');
+    if (role === 'super_admin' && currentUser.role !== 'super_admin') {
+      return NextResponse.json(
+        { success: false, error: 'Only a super admin can create super admins' },
+        { status: 403 },
+      );
+    }
+
+    const tempPassword = makeTempPassword();
+    const tempHash = await hashPassword(tempPassword);
     createUser(
       email.toLowerCase().trim(),
-      defaultHash,
+      tempHash,
       displayName.trim(),
       role,
       developerId ?? null,
       isFamily ?? false,
     );
 
-    sendWelcomeEmail(email.toLowerCase().trim(), displayName.trim(), role, 'changeme123');
+    sendWelcomeEmail(email.toLowerCase().trim(), displayName.trim(), role, tempPassword);
 
-    return NextResponse.json({ success: true });
+    // Returned once so the admin can hand it over if the email doesn't arrive.
+    return NextResponse.json({ success: true, tempPassword });
   } catch (err) {
     const message = err instanceof Error ? err.message : '';
     if (message.includes('UNIQUE constraint')) {
@@ -92,11 +107,12 @@ export async function POST(request: NextRequest) {
 
 /**
  * PATCH /api/admin/users
- * Update user role, reset password, or delete user. Super admin only.
+ * Update user role, reset password, or delete user. Admin and above; super admin
+ * accounts and the super admin role can only be touched by a super admin.
  * Body: { id, action: 'updateRole' | 'resetPassword' | 'delete', role? }
  */
 export async function PATCH(request: NextRequest) {
-  const currentUser = await requireRole('super_admin');
+  const currentUser = await requireMinRole('admin');
   if (!currentUser) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
@@ -131,6 +147,20 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    const isSuperAdmin = currentUser.role === 'super_admin';
+    if (targetUser.role === 'super_admin' && !isSuperAdmin) {
+      return NextResponse.json(
+        { success: false, error: 'Only a super admin can change super admin accounts' },
+        { status: 403 },
+      );
+    }
+    if (role === 'super_admin' && !isSuperAdmin) {
+      return NextResponse.json(
+        { success: false, error: 'Only a super admin can grant the super admin role' },
+        { status: 403 },
+      );
+    }
+
     if (action === 'updateRole') {
       if (!role) {
         return NextResponse.json(
@@ -144,10 +174,10 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (action === 'resetPassword') {
-      const defaultHash = await hashPassword('changeme123');
-      resetUserPassword(id, defaultHash);
-      sendPasswordResetEmail(targetUser.email, targetUser.display_name, 'changeme123');
-      return NextResponse.json({ success: true });
+      const tempPassword = makeTempPassword();
+      resetUserPassword(id, await hashPassword(tempPassword));
+      sendPasswordResetEmail(targetUser.email, targetUser.display_name, tempPassword);
+      return NextResponse.json({ success: true, tempPassword });
     }
 
     if (action === 'delete') {

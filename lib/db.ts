@@ -145,6 +145,23 @@ function initializeDb(): void {
     for (const v of [...STARTER_TUBE_VIDEOS].reverse()) insertVideo.run(...v);
   }
 
+  // ---- AI game generator log (one row per attempt, used for the daily cap) ----
+  d.exec(`
+    CREATE TABLE IF NOT EXISTS generations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      game_id INTEGER REFERENCES games(id) ON DELETE SET NULL,
+      model TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('ok', 'failed')),
+      input_tokens INTEGER DEFAULT 0,
+      output_tokens INTEGER DEFAULT 0,
+      cost_cents INTEGER,
+      error TEXT,
+      duration_ms INTEGER,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
   // ---- Seed developers (idempotent) ----
   const insertDev = d.prepare(`
     INSERT OR IGNORE INTO developers (name, slug, avatar_emoji, approved)
@@ -628,6 +645,51 @@ export function getGameBySlug(slug: string): Game | undefined {
   return getDb()
     .prepare("SELECT * FROM games WHERE slug = ?")
     .get(slug) as Game | undefined;
+}
+
+// ---------------------------------------------------------------------------
+// AI generator log
+// ---------------------------------------------------------------------------
+
+export interface AddGenerationData {
+  user_id: number;
+  game_id: number | null;
+  model: string;
+  status: "ok" | "failed";
+  input_tokens: number;
+  output_tokens: number;
+  cost_cents: number | null;
+  error?: string | null;
+  duration_ms: number;
+}
+
+export function addGeneration(data: AddGenerationData): Database.RunResult {
+  return getDb()
+    .prepare(
+      `INSERT INTO generations
+        (user_id, game_id, model, status, input_tokens, output_tokens, cost_cents, error, duration_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      data.user_id,
+      data.game_id,
+      data.model,
+      data.status,
+      data.input_tokens,
+      data.output_tokens,
+      data.cost_cents,
+      data.error ?? null,
+      data.duration_ms
+    );
+}
+
+export function countGenerationsLastDay(userId: number): number {
+  const row = getDb()
+    .prepare(
+      "SELECT COUNT(*) as count FROM generations WHERE user_id = ? AND created_at >= datetime('now', '-1 day')"
+    )
+    .get(userId) as { count: number };
+  return row.count;
 }
 
 export function addGame(data: AddGameData): Database.RunResult {

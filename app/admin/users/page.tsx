@@ -45,6 +45,9 @@ function roleBadge(role: string): { label: string; color: string; bg: string } {
 
 export default function AdminUsersPage() {
   const { user: currentUser } = useAuth();
+  // Only a super admin may hand out the super admin role.
+  const roleOptions =
+    currentUser?.role === 'super_admin' ? ROLES : ROLES.filter((r) => r.value !== 'super_admin');
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [developers, setDevelopers] = useState<Developer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,7 +114,9 @@ export default function AdminUsersPage() {
       const data = await res.json();
 
       if (data.success) {
-        setAddSuccess(`User "${displayName}" created with default password.`);
+        setAddSuccess(
+          `User "${displayName}" created. One-time password: ${data.tempPassword} (also emailed; they must change it on first login).`,
+        );
         setEmail('');
         setDisplayName('');
         setRole('outside_dev');
@@ -138,12 +143,18 @@ export default function AdminUsersPage() {
   }
 
   async function handleResetPassword(id: number, name: string) {
-    if (!confirm(`Reset password for "${name}" to default (changeme123)?`)) return;
-    await fetch('/api/admin/users', {
+    if (!confirm(`Reset password for "${name}"? They get a new one-time password.`)) return;
+    const res = await fetch('/api/admin/users', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, action: 'resetPassword' }),
     });
+    const data = await res.json();
+    if (data.success) {
+      alert(`New one-time password for "${name}": ${data.tempPassword}\n(Also emailed. They must change it on first login.)`);
+    } else {
+      alert(data.error || 'Reset failed.');
+    }
     loadData();
   }
 
@@ -157,11 +168,11 @@ export default function AdminUsersPage() {
     loadData();
   }
 
-  if (currentUser?.role !== 'super_admin') {
+  if (currentUser?.role !== 'super_admin' && currentUser?.role !== 'admin') {
     return (
       <div className="flex items-center justify-center py-20">
         <p className="text-lg opacity-60" style={{ color: 'var(--text)' }}>
-          Access denied. Super admin only.
+          Access denied. Admins only.
         </p>
       </div>
     );
@@ -253,7 +264,7 @@ export default function AdminUsersPage() {
                 className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer"
                 style={inputStyle}
               >
-                {ROLES.map((r) => (
+                {roleOptions.map((r) => (
                   <option key={r.value} value={r.value}>
                     {r.label}
                   </option>
@@ -311,7 +322,7 @@ export default function AdminUsersPage() {
           </button>
 
           <p className="text-xs opacity-40" style={{ color: 'var(--text)' }}>
-            New users get the default password &quot;changeme123&quot; and must change it on first login.
+            New users get a one-time password (shown here and emailed) and must change it on first login.
           </p>
         </form>
       </div>
@@ -338,6 +349,8 @@ export default function AdminUsersPage() {
             {users.map((u) => {
               const badge = roleBadge(u.role);
               const isSelf = u.id === currentUser?.userId;
+              // Admins can't change super admin accounts (the API refuses too).
+              const isLocked = u.role === 'super_admin' && currentUser?.role !== 'super_admin';
 
               return (
                 <div
@@ -376,6 +389,7 @@ export default function AdminUsersPage() {
                   </span>
 
                   {/* Actions */}
+                  {!isLocked && (
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {/* Role change */}
                     <select
@@ -385,7 +399,7 @@ export default function AdminUsersPage() {
                       style={inputStyle}
                       title="Change role"
                     >
-                      {ROLES.map((r) => (
+                      {roleOptions.map((r) => (
                         <option key={r.value} value={r.value}>
                           {r.label}
                         </option>
@@ -401,7 +415,7 @@ export default function AdminUsersPage() {
                         border: '1px solid rgba(245, 158, 11, 0.3)',
                         color: '#f59e0b',
                       }}
-                      title="Reset password to default"
+                      title="Reset password"
                     >
                       {'\u{1F511}'}
                     </button>
@@ -422,6 +436,7 @@ export default function AdminUsersPage() {
                       </button>
                     )}
                   </div>
+                  )}
                 </div>
               );
             })}
